@@ -54,8 +54,8 @@
     // ===== THE MAP =====
     // The map is made of hexagons (like Civilization!).
     // Each hex has a terrain type. Some you can walk on, some you can't.
-    const COLS = 17;
-    const ROWS = 11;
+    const COLS = 34;
+    const ROWS = 24;
     const HEX = 32; // size of one hexagon
 
     // Bright, juicy colors like Civilization 6!
@@ -99,7 +99,7 @@
         map[r] = [];
         for (let c = 0; c < COLS; c++) {
           const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c); // distance from map edge
-          const v = noise[r][c] - (edge === 0 ? 0.25 : 0);
+          const v = noise[r][c] - (edge === 0 ? 0.3 : edge === 1 ? 0.12 : 0);
           let t;
           if (v < 0.42) t = "ocean";
           else if (v < 0.48) t = "desert";
@@ -159,6 +159,44 @@
         .map(([dr, dc]) => ({ r: r + dr, c: c + dc }))
         .filter(p => p.r >= 0 && p.r < ROWS && p.c >= 0 && p.c < COLS);
     }
+
+    // ===== THE CAMERA =====
+    // The map is bigger than the screen now! The camera decides
+    // which part you see. Drag the map (or use arrow keys) to look around.
+    const cam = { x: 0, y: 0 };
+    const WORLD_W = OX * 2 + (COLS - 1) * W + W / 2 + W;
+    const WORLD_H = OY * 2 + (ROWS - 1) * H * SQUASH + HEX * 2;
+
+    function clampCam() {
+      cam.x = Math.max(0, Math.min(WORLD_W - canvas.width, cam.x));
+      cam.y = Math.max(0, Math.min(WORLD_H - canvas.height, cam.y));
+    }
+    function centerCameraOn(r, c) {
+      const p = hexCenter(r, c);
+      cam.x = p.x - canvas.width / 2;
+      cam.y = p.y - canvas.height / 2;
+      clampCam();
+    }
+
+    // ===== FOG OF WAR =====
+    // Tiles start hidden under parchment clouds. Your units light them up!
+    const explored = new Set();
+
+    function reveal(r, c, radius) {
+      // uncover every tile within `radius` steps
+      const seen = new Set([r + "," + c]);
+      explored.add(r + "," + c);
+      let ring = [{ r, c }];
+      for (let step = 0; step < radius; step++) {
+        let next = [];
+        for (const t of ring) for (const n of neighbors(t.r, t.c)) {
+          const key = n.r + "," + n.c;
+          if (!seen.has(key)) { seen.add(key); explored.add(key); next.push(n); }
+        }
+        ring = next;
+      }
+    }
+    function isExplored(r, c) { return explored.has(r + "," + c); }
 
     // ===== UNITS AND CITIES =====
     // Le Diggers units: a settler (founds cities) and a scout (explores fast!)
@@ -413,9 +451,20 @@
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(-cam.x, -cam.y); // the camera slides the world around
       // tiles, drawn top row first so closer tiles overlap farther ones (3D!)
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
+        if (!isExplored(r, c)) {
+          // fog of war: blank parchment, like an old unexplored map
+          drawHex(p.x, p.y, HEX, "#d8cdaf", "rgba(140,125,95,0.4)", 1.5);
+          ctx.fillStyle = "rgba(140,125,95,0.35)";
+          for (const [dx, dy] of [[-8, -4], [6, 2], [-2, 8]]) {
+            ctx.beginPath(); ctx.arc(p.x + dx, p.y + dy, 1.6, 0, Math.PI * 2); ctx.fill();
+          }
+          continue;
+        }
         const t = map[r][c];
         const top = p.y - LIFT[t];
         if (LIFT[t] > 0) {
@@ -443,6 +492,7 @@
         if (u === selected) drawHex(p.x, top, HEX - 3, null, "#ffffff", 3);
         drawUnit(p.x, top, u.type);
       }
+      ctx.restore();
     }
 
     // ===== CLICKS AND TURNS =====
@@ -454,9 +504,8 @@
       foundBtn.style.display = (selected && selected.type === "settler") ? "" : "none";
     }
 
-    canvas.addEventListener("click", (e) => {
-      const rect = canvas.getBoundingClientRect();
-      const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
+    function handleClick(x, y) {
+      const hex = pixelToHex(x, y);
       if (!hex) return;
 
       const clickedUnit = unitAt(hex.r, hex.c);
@@ -470,6 +519,7 @@
           const oneStep = neighbors(selected.r, selected.c).some(n => n.r === hex.r && n.c === hex.c);
           selected.moves -= oneStep ? 1 : 2;
           selected.r = hex.r; selected.c = hex.c;
+          reveal(hex.r, hex.c, 2); // moving uncovers the fog!
           info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
           if (selected.moves <= 0) selected = null;
         } else {
@@ -477,6 +527,33 @@
         }
       }
       updateButtons();
+      draw();
+    }
+
+    // drag the map to look around; a tiny click (no dragging) selects things
+    let drag = null;
+    canvas.addEventListener("mousedown", (e) => {
+      drag = { sx: e.clientX, sy: e.clientY, camX: cam.x, camY: cam.y, moved: false };
+    });
+    canvas.addEventListener("mouseup", (e) => {
+      if (drag && !drag.moved) {
+        const rect = canvas.getBoundingClientRect();
+        handleClick(e.clientX - rect.left + cam.x, e.clientY - rect.top + cam.y);
+      }
+      drag = null;
+    });
+    window.addEventListener("mouseup", () => { drag = null; });
+
+    // arrow keys pan the camera too
+    window.addEventListener("keydown", (e) => {
+      const step = 60;
+      if (e.key === "ArrowLeft") cam.x -= step;
+      else if (e.key === "ArrowRight") cam.x += step;
+      else if (e.key === "ArrowUp") cam.y -= step;
+      else if (e.key === "ArrowDown") cam.y += step;
+      else return;
+      e.preventDefault();
+      clampCam();
       draw();
     });
 
@@ -490,6 +567,7 @@
       // the settler becomes the city — and a scout pops out to keep exploring!
       const city = { r: settler.r, c: settler.c, name: CITY_NAMES[cities.length % CITY_NAMES.length] };
       cities.push(city);
+      reveal(city.r, city.c, 2); // a new city sees far around itself
       units = units.filter(u => u !== settler);
       selected = null;
       const spot = neighbors(city.r, city.c).find(n => TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c));
@@ -499,11 +577,26 @@
       draw();
     });
 
-    // hovering shows what a tile is
+    // dragging pans the camera; plain hovering shows what a tile is
     canvas.addEventListener("mousemove", (e) => {
+      if (drag) {
+        const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
+        if (Math.abs(dx) + Math.abs(dy) > 6) drag.moved = true;
+        if (drag.moved) {
+          cam.x = drag.camX - dx;
+          cam.y = drag.camY - dy;
+          clampCam();
+          draw();
+        }
+        return;
+      }
       const rect = canvas.getBoundingClientRect();
-      const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
-      if (hex && !selected) info.textContent = TERRAIN[map[hex.r][hex.c]].name;
+      const hex = pixelToHex(e.clientX - rect.left + cam.x, e.clientY - rect.top + cam.y);
+      if (hex && !selected) {
+        info.textContent = isExplored(hex.r, hex.c)
+          ? TERRAIN[map[hex.r][hex.c]].name
+          : "Unexplored ☁️ — send a scout!";
+      }
     });
 
     let turn = 1;
@@ -519,6 +612,8 @@
     // ===== START THE GAME =====
     makeMap();
     placeSettlerOnLand();
+    reveal(units[0].r, units[0].c, 2);
+    centerCameraOn(units[0].r, units[0].c);
     draw();
   </script>
 </body>
