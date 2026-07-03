@@ -42,10 +42,13 @@
   </style>
 </head>
 <body>
-  <h1>⛏️ Le Diggers — Explore the Land!</h1>
-  <div id="info">Click your digger, then click a green-ringed tile to move.</div>
+  <h1>⛏️ Le Diggers — Settle the Land!</h1>
+  <div id="info">Click your settler, move him somewhere nice, then press Found City!</div>
   <canvas id="game" width="1000" height="640"></canvas>
-  <button id="endTurn">End Turn ⏭️</button>
+  <div>
+    <button id="foundCity" style="display:none; background:#66d9ff; color:#0a2a40;">Found City 🏛️</button>
+    <button id="endTurn">End Turn ⏭️</button>
+  </div>
 
   <script>
     // ===== THE MAP =====
@@ -144,24 +147,49 @@
         .filter(p => p.r >= 0 && p.r < ROWS && p.c >= 0 && p.c < COLS);
     }
 
-    // ===== THE UNIT =====
-    // Your first Le Diggers unit: a digger with a shovel!
-    let digger = { r: 0, c: 0, moves: 2, maxMoves: 2, selected: false };
+    // ===== UNITS AND CITIES =====
+    // Le Diggers units: a settler (founds cities) and a scout (explores fast!)
+    let units = [];      // everyone on the map
+    let selected = null; // the unit you clicked on
+    let cities = [];
 
-    function placeDiggerOnLand() {
+    // Fun Le Diggers city names — first city gets the first name, and so on
+    const CITY_NAMES = ["Digtown", "Shovelburg", "Le Big Dig", "Sandcastle",
+                        "Trench City", "Dustopolis", "Holeville", "Excavation Station"];
+
+    function makeUnit(type, r, c) {
+      const maxMoves = type === "scout" ? 3 : 2; // scouts are speedy
+      return { type, r, c, moves: maxMoves, maxMoves };
+    }
+
+    function placeSettlerOnLand() {
       // start near the middle, on a walkable tile
       for (let tries = 0; tries < 500; tries++) {
         const r = Math.floor(ROWS / 2 + (Math.random() - 0.5) * 4);
         const c = Math.floor(COLS / 2 + (Math.random() - 0.5) * 6);
-        if (TERRAIN[map[r][c]].walk) { digger.r = r; digger.c = c; return; }
+        if (TERRAIN[map[r][c]].walk) { units.push(makeUnit("settler", r, c)); return; }
       }
     }
 
-    function reachableTiles() {
-      // where can the digger go right now? (1 move point per step)
-      if (digger.moves <= 0) return [];
-      let frontier = [{ r: digger.r, c: digger.c, left: digger.moves }];
-      let seen = { [digger.r + "," + digger.c]: true };
+    function unitAt(r, c) {
+      return units.find(u => u.r === r && u.c === c) || null;
+    }
+
+    // every tile owned by a city: the city tile plus its 6 neighbors
+    function territorySet() {
+      const set = new Set();
+      for (const city of cities) {
+        set.add(city.r + "," + city.c);
+        for (const n of neighbors(city.r, city.c)) set.add(n.r + "," + n.c);
+      }
+      return set;
+    }
+
+    function reachableTiles(unit) {
+      // where can this unit go right now? (1 move point per step)
+      if (!unit || unit.moves <= 0) return [];
+      let frontier = [{ r: unit.r, c: unit.c, left: unit.moves }];
+      let seen = { [unit.r + "," + unit.c]: true };
       let result = [];
       while (frontier.length) {
         const cur = frontier.pop();
@@ -170,7 +198,7 @@
           const key = n.r + "," + n.c;
           if (seen[key] || !TERRAIN[map[n.r][n.c]].walk) continue;
           seen[key] = true;
-          result.push(n);
+          if (!unitAt(n.r, n.c)) result.push(n); // can't stand on a friend
           frontier.push({ r: n.r, c: n.c, left: cur.left - 1 });
         }
       }
@@ -249,9 +277,9 @@
       }
     }
 
-    function drawDigger(x, y) {
+    function drawUnit(x, y, type) {
       // Le Diggers wear yellow and orange!
-      // soft shadow under his feet
+      // soft shadow under their feet
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
       // body
@@ -264,11 +292,88 @@
       ctx.fillStyle = "#ffcf1f";
       ctx.beginPath(); ctx.arc(x, y - 10, 7.5, Math.PI, 0); ctx.fill();
       ctx.fillRect(x - 9, y - 10, 18, 3);
-      // shovel!
-      ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.moveTo(x + 11, y - 14); ctx.lineTo(x + 11, y + 8); ctx.stroke();
-      ctx.fillStyle = "#9aa0aa";
-      ctx.beginPath(); ctx.ellipse(x + 11, y + 12, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+      if (type === "settler") {
+        // the settler carries a shovel
+        ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 11, y - 14); ctx.lineTo(x + 11, y + 8); ctx.stroke();
+        ctx.fillStyle = "#9aa0aa";
+        ctx.beginPath(); ctx.ellipse(x + 11, y + 12, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // the scout carries the Le Diggers flag
+        ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 11, y - 18); ctx.lineTo(x + 11, y + 12); ctx.stroke();
+        ctx.fillStyle = "#ffcf1f";
+        ctx.beginPath();
+        ctx.moveTo(x + 11, y - 18); ctx.lineTo(x + 24, y - 14); ctx.lineTo(x + 11, y - 10);
+        ctx.closePath(); ctx.fill();
+      }
+    }
+
+    function drawCity(city) {
+      const p = hexCenter(city.r, city.c);
+      const x = p.x, y = p.y;
+      // shadow
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath(); ctx.ellipse(x, y + 14, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
+      // big house
+      ctx.fillStyle = "#e8dcc2";
+      ctx.fillRect(x - 12, y - 2, 13, 15);
+      ctx.fillStyle = "#c8402e"; // red roof
+      ctx.beginPath();
+      ctx.moveTo(x - 14, y - 2); ctx.lineTo(x - 5.5, y - 12); ctx.lineTo(x + 3, y - 2);
+      ctx.closePath(); ctx.fill();
+      // small house
+      ctx.fillStyle = "#e8dcc2";
+      ctx.fillRect(x + 3, y + 3, 10, 10);
+      ctx.fillStyle = "#c8402e";
+      ctx.beginPath();
+      ctx.moveTo(x + 1, y + 3); ctx.lineTo(x + 8, y - 4); ctx.lineTo(x + 15, y + 3);
+      ctx.closePath(); ctx.fill();
+      // door
+      ctx.fillStyle = "#7a4a1e";
+      ctx.fillRect(x - 8, y + 5, 5, 8);
+      // Le Diggers flag on the big house
+      ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(x - 5.5, y - 12); ctx.lineTo(x - 5.5, y - 22); ctx.stroke();
+      ctx.fillStyle = "#ffcf1f";
+      ctx.beginPath();
+      ctx.moveTo(x - 5.5, y - 22); ctx.lineTo(x + 4, y - 19); ctx.lineTo(x - 5.5, y - 16);
+      ctx.closePath(); ctx.fill();
+      // city name on a little banner
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      const w = ctx.measureText(city.name).width + 10;
+      ctx.fillStyle = "rgba(20,40,90,0.85)";
+      ctx.fillRect(x - w / 2, y - 40, w, 16);
+      ctx.fillStyle = "#ffe066";
+      ctx.fillText(city.name, x, y - 28);
+    }
+
+    function drawBorders() {
+      // Le Diggers borders: blue and yellow, drawn only on the OUTSIDE
+      // edges of the territory (like Civ 6 country borders)
+      const owned = territorySet();
+      for (const key of owned) {
+        const [r, c] = key.split(",").map(Number);
+        const p = hexCenter(r, c);
+        for (let i = 0; i < 6; i++) {
+          const a1 = Math.PI / 180 * (60 * i - 30);
+          const a2 = Math.PI / 180 * (60 * (i + 1) - 30);
+          const x1 = p.x + HEX * Math.cos(a1), y1 = p.y + HEX * Math.sin(a1);
+          const x2 = p.x + HEX * Math.cos(a2), y2 = p.y + HEX * Math.sin(a2);
+          // the tile on the other side of this edge
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          const beyond = pixelToHex(p.x + (mx - p.x) * 2, p.y + (my - p.y) * 2);
+          const outside = !beyond || !owned.has(beyond.r + "," + beyond.c);
+          if (outside) {
+            ctx.lineCap = "round";
+            ctx.strokeStyle = "#2b6fd4"; ctx.lineWidth = 6;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+            ctx.strokeStyle = "#ffd21f"; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          }
+        }
+      }
     }
 
     function draw() {
@@ -279,42 +384,76 @@
         drawHex(p.x, p.y, HEX, TERRAIN[map[r][c]].color, "rgba(255,255,255,0.22)", 1.5);
         drawDecorations(p.x, p.y, map[r][c]);
       }
-      // green rings = where you can move
-      if (digger.selected) {
-        for (const t of reachableTiles()) {
+      // country borders go on top of the tiles
+      drawBorders();
+      // cities
+      for (const city of cities) drawCity(city);
+      // green rings = where the selected unit can move
+      if (selected) {
+        for (const t of reachableTiles(selected)) {
           const p = hexCenter(t.r, t.c);
           drawHex(p.x, p.y, HEX - 5, null, "#33ff88", 3.5);
         }
       }
-      // the digger (with a glowing ring when selected)
-      const dp = hexCenter(digger.r, digger.c);
-      if (digger.selected) drawHex(dp.x, dp.y, HEX - 3, null, "#ffffff", 3);
-      drawDigger(dp.x, dp.y);
+      // the units (with a glowing ring on the selected one)
+      for (const u of units) {
+        const p = hexCenter(u.r, u.c);
+        if (u === selected) drawHex(p.x, p.y, HEX - 3, null, "#ffffff", 3);
+        drawUnit(p.x, p.y, u.type);
+      }
     }
 
     // ===== CLICKS AND TURNS =====
     const info = document.getElementById("info");
+    const foundBtn = document.getElementById("foundCity");
+
+    function updateButtons() {
+      // the Found City button only shows for a selected settler
+      foundBtn.style.display = (selected && selected.type === "settler") ? "" : "none";
+    }
 
     canvas.addEventListener("click", (e) => {
       const rect = canvas.getBoundingClientRect();
       const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
       if (!hex) return;
 
-      if (hex.r === digger.r && hex.c === digger.c) {
-        digger.selected = !digger.selected; // click digger = select or unselect
-      } else if (digger.selected) {
-        const ok = reachableTiles().some(t => t.r === hex.r && t.c === hex.c);
+      const clickedUnit = unitAt(hex.r, hex.c);
+      if (clickedUnit) {
+        // click a unit = select it (click again to unselect)
+        selected = (selected === clickedUnit) ? null : clickedUnit;
+      } else if (selected) {
+        const ok = reachableTiles(selected).some(t => t.r === hex.r && t.c === hex.c);
         if (ok) {
           // how many steps did that take? (1 or 2)
-          const oneStep = neighbors(digger.r, digger.c).some(n => n.r === hex.r && n.c === hex.c);
-          digger.moves -= oneStep ? 1 : 2;
-          digger.r = hex.r; digger.c = hex.c;
-          info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + digger.moves;
-          if (digger.moves <= 0) digger.selected = false;
+          const oneStep = neighbors(selected.r, selected.c).some(n => n.r === hex.r && n.c === hex.c);
+          selected.moves -= oneStep ? 1 : 2;
+          selected.r = hex.r; selected.c = hex.c;
+          info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
+          if (selected.moves <= 0) selected = null;
         } else {
           info.textContent = "Can't go there! " + TERRAIN[map[hex.r][hex.c]].name;
         }
       }
+      updateButtons();
+      draw();
+    });
+
+    foundBtn.addEventListener("click", () => {
+      if (!selected || selected.type !== "settler") return;
+      const settler = selected;
+      if (territorySet().has(settler.r + "," + settler.c)) {
+        info.textContent = "Too close to another city! Move a bit further away.";
+        return;
+      }
+      // the settler becomes the city — and a scout pops out to keep exploring!
+      const city = { r: settler.r, c: settler.c, name: CITY_NAMES[cities.length % CITY_NAMES.length] };
+      cities.push(city);
+      units = units.filter(u => u !== settler);
+      selected = null;
+      const spot = neighbors(city.r, city.c).find(n => TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c));
+      if (spot) units.push(makeUnit("scout", spot.r, spot.c));
+      info.textContent = "🎉 " + city.name + " founded! A scout with the Le Diggers flag is ready to explore.";
+      updateButtons();
       draw();
     });
 
@@ -322,20 +461,22 @@
     canvas.addEventListener("mousemove", (e) => {
       const rect = canvas.getBoundingClientRect();
       const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
-      if (hex && !digger.selected) info.textContent = TERRAIN[map[hex.r][hex.c]].name;
+      if (hex && !selected) info.textContent = TERRAIN[map[hex.r][hex.c]].name;
     });
 
     let turn = 1;
     document.getElementById("endTurn").addEventListener("click", () => {
       turn++;
-      digger.moves = digger.maxMoves;
-      info.textContent = "Turn " + turn + " — your digger has " + digger.maxMoves + " moves again!";
+      selected = null;
+      for (const u of units) u.moves = u.maxMoves;
+      info.textContent = "Turn " + turn + " — everyone has their moves back!";
+      updateButtons();
       draw();
     });
 
     // ===== START THE GAME =====
     makeMap();
-    placeDiggerOnLand();
+    placeSettlerOnLand();
     draw();
   </script>
 </body>
