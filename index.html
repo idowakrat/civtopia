@@ -104,6 +104,14 @@
     .civCard .ability { color: #b9c4e8; }
     .diffBtn { background: #4a4a72; color: white; }
     .diffBtn.selected { background: #66d9ff; color: #0a2a40; }
+    /* the tech tree, in columns like Civ 5 */
+    #techList { flex-wrap: nowrap; align-items: flex-start; overflow-x: auto; max-width: 98vw; padding: 0 10px; }
+    .techCol { display: flex; flex-direction: column; gap: 8px; min-width: 180px; }
+    .techEra { text-align: center; color: #ffd966; font-weight: bold; }
+    .techCard { width: 180px; font-size: 0.75em; padding: 7px; }
+    .techCard.locked { opacity: 0.45; cursor: not-allowed; }
+    .techCard.locked:hover { background: #23234a; border-color: #4466aa; transform: none; }
+    .techCard.done { border-color: #3fbf5a; opacity: 0.75; }
   </style>
 </head>
 <body>
@@ -419,15 +427,32 @@
     }
 
     // ===== TECHNOLOGIES =====
-    // Research these with science 🔬 to unlock new buildings!
+    // A real Civilization 5 style tech tree! "col" is the column it sits in.
     const TECHS = {
-      mining:      { name: "Mining ⛏️",      cost: 10, req: [],                     gives: "unlocks the Woodhenge wonder" },
-      pottery:     { name: "Pottery 🏺",     cost: 10, req: [],                     gives: "leads to Writing and Theology" },
-      writing:     { name: "Writing 📜",     cost: 15, req: ["pottery"],            gives: "unlocks the Library" },
-      masonry:     { name: "Masonry 🧱",     cost: 15, req: ["mining"],             gives: "unlocks the Array of Ginglewhopperian Gods" },
-      theology:    { name: "Theology ⛪",    cost: 20, req: ["pottery"],            gives: "unlocks the Shrine" },
-      engineering: { name: "Engineering ⚙️", cost: 25, req: ["mining", "writing"],  gives: "unlocks the Workshop" },
+      agriculture:      { name: "Agriculture 🌱",      cost: 8,  col: 0, req: [], gives: "the start of everything — farms (soon)" },
+      pottery:          { name: "Pottery 🏺",          cost: 15, col: 1, req: ["agriculture"], gives: "leads to Sailing, Calendar and Writing" },
+      animal_husbandry: { name: "Animal Husbandry 🐄", cost: 15, col: 1, req: ["agriculture"], gives: "pastures for cattle and horses (soon)" },
+      archery:          { name: "Archery 🏹",          cost: 15, col: 1, req: ["agriculture"], gives: "Archers → the Ninja Ranger (soon!)" },
+      mining:           { name: "Mining ⛏️",           cost: 15, col: 1, req: ["agriculture"], gives: "unlocks the Woodhenge 🪵 wonder" },
+      sailing:          { name: "Sailing ⛵",          cost: 25, col: 2, req: ["pottery"], gives: "boats to cross the sea (soon)" },
+      calendar:         { name: "Calendar 📅",         cost: 25, col: 2, req: ["pottery"], gives: "plantations for bananas (soon)" },
+      writing:          { name: "Writing 📜",          cost: 25, col: 2, req: ["pottery"], gives: "unlocks the Library 📚" },
+      trapping:         { name: "Trapping 🪤",         cost: 25, col: 2, req: ["animal_husbandry"], gives: "camps for furs (soon)" },
+      the_wheel:        { name: "The Wheel ☸️",        cost: 25, col: 2, req: ["animal_husbandry"], gives: "roads (soon)" },
+      masonry:          { name: "Masonry 🧱",          cost: 25, col: 2, req: ["mining"], gives: "unlocks the Array of Ginglewhopperian Gods 🗽" },
+      bronze_working:   { name: "Bronze Working 🛡️",   cost: 25, col: 2, req: ["mining"], gives: "Spearmen (soon)" },
+      optics:           { name: "Optics 🔭",           cost: 40, col: 3, req: ["sailing"], gives: "ships that see far (soon)" },
+      philosophy:       { name: "Philosophy 🤔",       cost: 40, col: 3, req: ["writing"], gives: "leads to Theology" },
+      horseback_riding: { name: "Horseback Riding 🐎", cost: 40, col: 3, req: ["the_wheel"], gives: "Knights → the Gingleraider (soon!)" },
+      mathematics:      { name: "Mathematics ➗",      cost: 40, col: 3, req: ["the_wheel", "archery"], gives: "Catapults (soon)" },
+      construction:     { name: "Construction 🏗️",     cost: 40, col: 3, req: ["masonry"], gives: "Colosseum (soon)" },
+      iron_working:     { name: "Iron Working ⚔️",     cost: 40, col: 3, req: ["bronze_working"], gives: "Swordsmen → the Un Digatron (soon!)" },
+      theology:         { name: "Theology ⛪",         cost: 60, col: 4, req: ["philosophy", "calendar"], gives: "unlocks the Shrine ⛩️" },
+      currency:         { name: "Currency 💰",         cost: 60, col: 4, req: ["mathematics"], gives: "Markets (soon)" },
+      engineering:      { name: "Engineering ⚙️",      cost: 60, col: 4, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
+      metal_casting:    { name: "Metal Casting 🔥",    cost: 60, col: 4, req: ["iron_working"], gives: "Forges (soon)" },
     };
+    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical"];
 
     // ===== BUILDINGS AND WONDERS =====
     // yields: f food, p production, g gold, s science, cu culture
@@ -1072,22 +1097,44 @@
     }
 
     function renderTechPanel() {
+      // draws the whole tree in columns, like Civ 5's tech screen
       const list = document.getElementById("techList");
       list.innerHTML = "";
-      for (const key of availableTechs()) {
-        const t = TECHS[key];
-        const card = document.createElement("button");
-        card.className = "civCard";
-        const turns = lastScience > 0 ? Math.ceil(Math.max(0, t.cost - scienceBucket) / lastScience) : "?";
-        card.innerHTML = '<div class="civName">' + t.name + "</div>" +
-          '<div class="ability">' + t.gives + "</div>" +
-          '<div class="leader">' + t.cost + " 🔬 (about " + turns + " turns)</div>";
-        card.addEventListener("click", () => {
-          currentTech = key;
-          document.getElementById("techPanel").style.display = "none";
-          updateTopbar();
-        });
-        list.appendChild(card);
+      const maxCol = Math.max(...Object.values(TECHS).map(t => t.col));
+      const canPick = new Set(availableTechs());
+      for (let col = 0; col <= maxCol; col++) {
+        const colDiv = document.createElement("div");
+        colDiv.className = "techCol";
+        const era = document.createElement("div");
+        era.className = "techEra";
+        era.textContent = TECH_ERAS[col];
+        colDiv.appendChild(era);
+        for (const [key, t] of Object.entries(TECHS)) {
+          if (t.col !== col) continue;
+          const card = document.createElement("button");
+          card.className = "civCard techCard";
+          const turns = lastScience > 0 ? Math.ceil(Math.max(0, t.cost - scienceBucket) / lastScience) : "?";
+          let status = "";
+          if (researched.has(key)) { card.classList.add("done"); status = "✅ done"; }
+          else if (!canPick.has(key)) {
+            card.classList.add("locked");
+            status = "🔒 needs " + t.req.filter(rq => !researched.has(rq)).map(rq => TECHS[rq].name).join(", ");
+          } else {
+            status = t.cost + " 🔬 (about " + turns + " turns)";
+          }
+          card.innerHTML = '<div class="civName">' + t.name + "</div>" +
+            '<div class="ability">' + t.gives + "</div>" +
+            '<div class="leader">' + status + "</div>";
+          if (canPick.has(key)) {
+            card.addEventListener("click", () => {
+              currentTech = key;
+              document.getElementById("techPanel").style.display = "none";
+              updateTopbar();
+            });
+          }
+          colDiv.appendChild(card);
+        }
+        list.appendChild(colDiv);
       }
       document.getElementById("techPanel").style.display = "flex";
     }
@@ -1410,6 +1457,7 @@
       document.getElementById("picker").style.display = "none";
       document.getElementById("title").textContent =
         CIVS[key].emoji + " " + CIVS[key].name + " — Build Your Empire!";
+      researched.add("agriculture"); // every civ knows how to farm (like Civ 5!)
       makeMap();
       scatterResources();
       placeSettlerOnLand();
