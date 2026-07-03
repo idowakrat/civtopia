@@ -105,7 +105,7 @@
     .diffBtn { background: #4a4a72; color: white; }
     .diffBtn.selected { background: #66d9ff; color: #0a2a40; }
     /* the tech tree, in columns like Civ 5 */
-    #techList { flex-wrap: nowrap; align-items: flex-start; overflow-x: auto; max-width: 98vw; padding: 0 10px; }
+    #techList, #policyList { flex-wrap: nowrap; align-items: flex-start; overflow-x: auto; max-width: 98vw; padding: 0 10px; }
     .techCol { display: flex; flex-direction: column; gap: 8px; min-width: 180px; }
     .techEra { text-align: center; color: #ffd966; font-weight: bold; }
     .techCard { width: 180px; font-size: 0.75em; padding: 7px; }
@@ -135,6 +135,7 @@
   </div>
   <div id="policyPanel" class="overlay" style="display:none">
     <h2>🎭 Pick a Social Policy!</h2>
+    <div id="policyCost" style="color:#b9c4e8; margin-bottom:8px"></div>
     <div id="policyList" class="cardList"></div>
     <button id="policyLater">Decide later</button>
   </div>
@@ -488,15 +489,38 @@
     };
 
     // ===== SOCIAL POLICIES =====
-    const POLICIES = {
-      tradition:   { name: "Tradition 🏛️",   desc: "+3 food in your capital" },
-      liberty:     { name: "Liberty 🗽",     desc: "+1 production in every city" },
-      honor:       { name: "Honor 🎖️",      desc: "+1 movement for all your units" },
-      patronage:   { name: "Patronage 💰",   desc: "+2 gold from every city" },
-      rationalism: { name: "Rationalism 🔬", desc: "+2 science from every city" },
-      aesthetics:  { name: "Aesthetics 🎨",  desc: "+3 culture every turn" },
+    // Real Civ 5 policy BRANCHES! First adopt a branch's opener,
+    // then you can pick the policies inside it.
+    const POLICY_TREES = {
+      tradition: { name: "Tradition 🏛️", opener: "+3 culture in your capital", policies: {
+        aristocracy:  { name: "Aristocracy",  desc: "+15% production when building wonders" },
+        landed_elite: { name: "Landed Elite", desc: "+2 food in your capital" },
+        legalism:     { name: "Legalism",     desc: "a FREE Monument in your capital" },
+      }},
+      liberty: { name: "Liberty 🗽", opener: "+1 culture in every city", policies: {
+        republic:        { name: "Republic",        desc: "+1 production in every city" },
+        collective_rule: { name: "Collective Rule", desc: "Settlers are built 50% faster" },
+        meritocracy:     { name: "Meritocracy",     desc: "+1 gold in every city" },
+      }},
+      honor: { name: "Honor 🎖️", opener: "Warriors get +1 movement", policies: {
+        warrior_code:       { name: "Warrior Code",       desc: "+20% production when building Warriors" },
+        discipline:         { name: "Discipline",         desc: "+1 capital culture for every Warrior you own" },
+        military_tradition: { name: "Military Tradition", desc: "Warriors get +1 movement (again!)" },
+      }},
+      commerce: { name: "Commerce 💰", opener: "+25% gold in your capital", policies: {
+        trade_unions:  { name: "Trade Unions",  desc: "+2 gold in every city" },
+        mercantilism:  { name: "Mercantilism",  desc: "+1 gold from every worked luxury" },
+        protectionism: { name: "Protectionism", desc: "+1 food from every worked luxury" },
+      }},
+      rationalism: { name: "Rationalism 🔬", opener: "+10% science everywhere", policies: {
+        secularism:   { name: "Secularism",   desc: "+2 science per specialist" },
+        free_thought: { name: "Free Thought", desc: "+2 science in every city" },
+        sovereignty:  { name: "Sovereignty",  desc: "+1 science from every worked luxury" },
+      }},
     };
-    const POLICY_COSTS = [15, 40, 80, 140, 220, 320];
+    const POLICY_COSTS = [15, 35, 60, 90, 125, 165, 210, 260, 315, 375,
+                          440, 510, 585, 665, 750, 840, 935, 1035, 1140, 1250];
+    let freePolicies = 0; // gifts from wonders like the Oracle!
 
     // ===== GAME STATE =====
     let playerKey = null;   // which civ YOU are
@@ -515,7 +539,10 @@
 
     function makeUnit(type, r, c, owner) {
       let maxMoves = (type === "scout" ? 3 : 2) + CIVS[owner].moveBonus;
-      if (owner === playerKey && adopted.has("honor")) maxMoves += 1;
+      if (owner === playerKey && type === "warrior") {
+        if (adopted.has("honor")) maxMoves += 1;
+        if (adopted.has("military_tradition")) maxMoves += 1;
+      }
       return { type, r, c, owner, moves: maxMoves, maxMoves };
     }
 
@@ -660,11 +687,23 @@
       y.s += city.pop;
       // social policies (only for you, the player)
       if (owner === playerKey) {
-        if (adopted.has("tradition") && capitalOf(owner) === city) y.f += 3;
-        if (adopted.has("liberty")) y.p += 1;
-        if (adopted.has("patronage")) y.g += 2;
-        if (adopted.has("rationalism")) y.s += 2;
-        if (adopted.has("aesthetics") && capitalOf(owner) === city) y.cu += 3;
+        const isCap = capitalOf(owner) === city;
+        if (adopted.has("tradition") && isCap) y.cu += 3;
+        if (adopted.has("landed_elite") && isCap) y.f += 2;
+        if (adopted.has("liberty")) y.cu += 1;
+        if (adopted.has("republic")) y.p += 1;
+        if (adopted.has("meritocracy")) y.g += 1;
+        if (adopted.has("trade_unions")) y.g += 2;
+        if (adopted.has("mercantilism")) y.g += luxCount;
+        if (adopted.has("protectionism")) y.f += luxCount;
+        if (adopted.has("free_thought")) y.s += 2;
+        if (adopted.has("secularism")) y.s += specialists * 2;
+        if (adopted.has("sovereignty")) y.s += luxCount;
+        if (adopted.has("discipline") && isCap) {
+          y.cu += units.filter(u => u.owner === owner && u.type === "warrior").length;
+        }
+        if (adopted.has("commerce") && isCap) y.g = Math.round(y.g * 1.25);
+        if (adopted.has("rationalism")) y.s = Math.round(y.s * 1.1);
       }
       return y;
     }
@@ -743,11 +782,17 @@
         !researched.has(k) && TECHS[k].req.every(rq => researched.has(rq)));
     }
     function nextPolicyCost() {
+      if (freePolicies > 0) return 0; // the Oracle pays for this one
       const base = POLICY_COSTS[Math.min(adopted.size, POLICY_COSTS.length - 1)];
       return playerKey === "boland" ? Math.round(base * 0.75) : base; // Bolun's discount!
     }
     function availablePolicies() {
-      return Object.keys(POLICIES).filter(k => !adopted.has(k));
+      const avail = [];
+      for (const [tk, tree] of Object.entries(POLICY_TREES)) {
+        if (!adopted.has(tk)) avail.push(tk); // the branch opener
+        else for (const pk of Object.keys(tree.policies)) if (!adopted.has(pk)) avail.push(pk);
+      }
+      return avail;
     }
 
     // ===== DRAWING =====
@@ -1314,29 +1359,60 @@
     }
 
     function renderPolicyPanel() {
+      // one column per branch, like Civ 5's policy screen
       const list = document.getElementById("policyList");
       list.innerHTML = "";
-      for (const key of availablePolicies()) {
-        const pol = POLICIES[key];
-        const card = document.createElement("button");
-        card.className = "civCard";
-        card.innerHTML = '<div class="civName">' + pol.name + "</div>" +
-          '<div class="ability">' + pol.desc + "</div>";
-        card.addEventListener("click", () => {
-          const price = nextPolicyCost(); // pay THIS policy's price, then it goes up
-          adopted.add(key);
-          cultureBucket -= price;
-          if (key === "honor") {
-            for (const u of units) if (u.owner === playerKey) { u.maxMoves++; u.moves++; }
-          }
-          document.getElementById("policyPanel").style.display = "none";
-          info.textContent = "🎭 You adopted " + pol.name + "! " + pol.desc;
-          updateTopbar();
-          draw();
-        });
-        list.appendChild(card);
+      for (const [tk, tree] of Object.entries(POLICY_TREES)) {
+        const colDiv = document.createElement("div");
+        colDiv.className = "techCol";
+        const treeOpen = adopted.has(tk);
+        const openerCard = document.createElement("button");
+        openerCard.className = "civCard techCard" + (treeOpen ? " done" : "");
+        openerCard.innerHTML = '<div class="civName">' + tree.name + "</div>" +
+          '<div class="ability">Opener: ' + tree.opener + "</div>" +
+          (treeOpen ? '<div class="leader">✅ adopted</div>' : "");
+        if (!treeOpen) openerCard.addEventListener("click", () => adoptPolicy(tk, tree.name));
+        colDiv.appendChild(openerCard);
+        for (const [pk, pol] of Object.entries(tree.policies)) {
+          const done = adopted.has(pk);
+          const card = document.createElement("button");
+          card.className = "civCard techCard" + (done ? " done" : treeOpen ? "" : " locked");
+          card.innerHTML = '<div class="civName">' + pol.name + "</div>" +
+            '<div class="ability">' + pol.desc + "</div>" +
+            (done ? '<div class="leader">✅ adopted</div>' :
+             treeOpen ? "" : '<div class="leader">🔒 open ' + tree.name + " first</div>");
+          if (treeOpen && !done) card.addEventListener("click", () => adoptPolicy(pk, pol.name));
+          colDiv.appendChild(card);
+        }
+        list.appendChild(colDiv);
       }
+      document.getElementById("policyCost").textContent = freePolicies > 0
+        ? "🎁 The Oracle grants you a FREE policy — pick anything!"
+        : "Next policy costs " + nextPolicyCost() + " 🎭 (you have " + cultureBucket + ")";
       document.getElementById("policyPanel").style.display = "flex";
+    }
+
+    function adoptPolicy(key, name) {
+      const price = nextPolicyCost();
+      if (freePolicies > 0) {
+        freePolicies--;
+      } else {
+        if (cultureBucket < price) { document.getElementById("policyCost").textContent = "Not enough culture yet! Need " + price + " 🎭"; return; }
+        cultureBucket -= price;
+      }
+      adopted.add(key);
+      if (key === "honor" || key === "military_tradition") {
+        for (const u of units) if (u.owner === playerKey && u.type === "warrior") { u.maxMoves++; u.moves++; }
+      }
+      if (key === "legalism") {
+        const cap = capitalOf(playerKey);
+        if (cap && !cap.buildings.includes("monument")) cap.buildings.push("monument");
+      }
+      document.getElementById("policyPanel").style.display = "none";
+      info.textContent = "🎭 You adopted " + name + "!";
+      updateTopbar();
+      renderCityPanel();
+      draw();
     }
 
     techBtn.addEventListener("click", renderTechPanel);
