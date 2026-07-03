@@ -462,15 +462,27 @@
 
     // ===== BUILDINGS AND WONDERS =====
     // yields: f food, p production, g gold, s science, cu culture
+    // costs follow Civ 5's real price ratios (settlers are EXPENSIVE!)
     const BUILDINGS = {
       monument: { name: "Monument 🗿", cost: 25, tech: null, effect: { cu: 2 } },
-      shrine:   { name: "Shrine ⛩️",  cost: 35, tech: "theology", effect: { f: 1, g: 1, cu: 3 } },
-      library:  { name: "Library 📚", cost: 40, tech: "writing", effect: { s: 3 } },
-      workshop: { name: "Workshop 🔨", cost: 45, tech: "engineering", effect: { p: 2 } },
-      woodhenge: { name: "Woodhenge 🪵", cost: 70, tech: "mining", wonder: true, needs: ["shrine", "library"],
+      shrine:   { name: "Shrine ⛩️",  cost: 25, tech: "theology", effect: { f: 1, g: 1, cu: 3 } },
+      library:  { name: "Library 📚", cost: 45, tech: "writing", effect: { s: 3 } },
+      workshop: { name: "Workshop 🔨", cost: 65, tech: "engineering", effect: { p: 2 } },
+      // Adam & Meir's custom wonders
+      woodhenge: { name: "Woodhenge 🪵", cost: 90, tech: "mining", wonder: true, needs: ["shrine", "library"],
                    effect: { cu: 3 }, special: "Doubles what luxury resources give ALL your cities!" },
-      array:    { name: "Array of Ginglewhopperian Gods 🗽", cost: 60, tech: "masonry", wonder: true,
+      array:    { name: "Array of Ginglewhopperian Gods 🗽", cost: 75, tech: "masonry", wonder: true,
                   effect: { cu: 5 }, special: "So beautiful. So gingly." },
+      // the real Civ 5 ancient wonders!
+      stonehenge:      { name: "Stonehenge 🪨",          cost: 65, tech: "calendar", wonder: true, effect: { cu: 4 } },
+      great_library:   { name: "The Great Library 📖",   cost: 75, tech: "writing", wonder: true, effect: { s: 3 },
+                         grants: "freeTech", special: "Finishes a technology for FREE!" },
+      pyramids:        { name: "The Pyramids 🔺",        cost: 75, tech: "masonry", wonder: true, effect: { p: 2 } },
+      colossus:        { name: "The Colossus ⚓",        cost: 75, tech: "bronze_working", wonder: true, effect: { g: 5 },
+                         needsCoast: true, special: "Must be built in a city by the sea" },
+      hanging_gardens: { name: "The Hanging Gardens 🌺", cost: 85, tech: "mathematics", wonder: true, effect: { f: 6 } },
+      oracle:          { name: "The Oracle 🔮",          cost: 70, tech: "philosophy", wonder: true, effect: { cu: 2 },
+                         grants: "freePolicy", special: "Grants a FREE social policy!" },
     };
     // special versions from the presentation!
     const REPLACEMENTS = {
@@ -483,9 +495,9 @@
     }
 
     const UNIT_TYPES = {
-      settler: { name: "Settler", cost: 30, icon: "🏠" },
+      settler: { name: "Settler", cost: 55, icon: "🏠" },
       scout:   { name: "Scout",   cost: 15, icon: "🔭" },
-      warrior: { name: "Warrior", cost: 20, icon: "⚔️" },
+      warrior: { name: "Warrior", cost: 24, icon: "⚔️" },
     };
 
     // ===== SOCIAL POLICIES =====
@@ -724,6 +736,11 @@
         if (b.tech && !researched.has(b.tech)) continue;
         if (b.wonder && wonderBuiltAnywhere(key)) continue;
         if (b.needs && !b.needs.every(n => city.buildings.includes(n))) continue;
+        if (b.needsCoast) { // the Colossus wants to stand in the sea
+          const nearSea = [{ r: city.r, c: city.c }, ...neighbors(city.r, city.c)]
+            .some(t => map[t.r][t.c] === "coast" || map[t.r][t.c] === "ocean");
+          if (!nearSea) continue;
+        }
         opts.push(key);
       }
       return opts;
@@ -735,22 +752,31 @@
     // one turn of life inside a city: eating, growing, building
     function processCity(city, speed) {
       const y = cityYields(city);
-      // growth: people eat 2 food each, leftovers fill the growth bar
+      // growth: people eat 2 food each, leftovers fill the growth bar.
+      // Civ 5 rule: a city building a Settler is too busy packing to grow!
       const surplus = y.f - city.pop * 2;
-      city.foodBucket += surplus * speed;
-      if (city.foodBucket >= growthNeeded(city.pop)) {
-        city.pop++;
-        city.foodBucket = 0;
-        if (city.owner === playerKey) say("👥 " + city.name + " grew to " + city.pop + " people!");
+      if (city.producing !== "settler") {
+        city.foodBucket += surplus * speed;
+        if (city.foodBucket >= growthNeeded(city.pop)) {
+          city.pop++;
+          city.foodBucket = 0;
+          if (city.owner === playerKey) say("👥 " + city.name + " grew to " + city.pop + " people!");
+        }
+        if (city.foodBucket < 0) { // starving!
+          if (city.pop > 1) city.pop--;
+          city.foodBucket = 0;
+          if (city.owner === playerKey) say("😰 " + city.name + " is hungry and shrank!");
+        }
       }
-      if (city.foodBucket < 0) { // starving!
-        if (city.pop > 1) city.pop--;
-        city.foodBucket = 0;
-        if (city.owner === playerKey) say("😰 " + city.name + " is hungry and shrank!");
-      }
-      // production
+      // production, with Civ 5 style bonuses from policies
       if (city.producing) {
-        city.prodBucket += y.p * speed;
+        let mult = 1;
+        if (city.owner === playerKey) {
+          if (BUILDINGS[city.producing] && BUILDINGS[city.producing].wonder && adopted.has("aristocracy")) mult = 1.15;
+          if (city.producing === "warrior" && adopted.has("warrior_code")) mult = 1.2;
+          if (city.producing === "settler" && adopted.has("collective_rule")) mult = 1.5;
+        }
+        city.prodBucket += y.p * speed * mult;
         const cost = prodCost(city.producing);
         if (city.prodBucket >= cost) {
           const item = city.producing;
@@ -770,6 +796,24 @@
             city.producing = null;
             if (city.owner === playerKey) {
               say((BUILDINGS[item].wonder ? "🌟 WONDER COMPLETE: " : "🏗️ ") + city.name + " built the " + bInfo(item, city.owner).name + "!");
+              // some wonders come with a gift!
+              if (BUILDINGS[item].grants === "freeTech") {
+                if (currentTech) {
+                  researched.add(currentTech);
+                  say("📖 The Great Library finished " + TECHS[currentTech].name + " for FREE!");
+                  currentTech = null;
+                } else {
+                  const av = availableTechs();
+                  if (av.length) {
+                    researched.add(av[0]);
+                    say("📖 The Great Library taught you " + TECHS[av[0]].name + " for FREE!");
+                  }
+                }
+              }
+              if (BUILDINGS[item].grants === "freePolicy") {
+                freePolicies++;
+                say("🔮 The Oracle grants you a FREE social policy!");
+              }
             }
           }
         }
