@@ -22,7 +22,7 @@
       min-height: 1.2em;
     }
     canvas {
-      background: #10102a;
+      background: #235a9c; /* deep sea around the map */
       border: 3px solid #4466aa;
       border-radius: 10px;
       cursor: pointer;
@@ -55,13 +55,15 @@
     const ROWS = 11;
     const HEX = 32; // size of one hexagon
 
+    // Bright, juicy colors like Civilization 6!
     const TERRAIN = {
-      water:    { color: "#3d7ecc", walk: false, name: "Water 🌊" },
-      grass:    { color: "#6abe4d", walk: true,  name: "Grassland 🌿" },
-      plains:   { color: "#c9c25a", walk: true,  name: "Plains 🌾" },
-      desert:   { color: "#eed08a", walk: true,  name: "Desert 🏜️ (Le Diggers love this!)" },
-      forest:   { color: "#3e8a3e", walk: true,  name: "Forest 🌲" },
-      mountain: { color: "#8d8d99", walk: false, name: "Mountain ⛰️ (too steep!)" },
+      ocean:    { color: "#2d6cb5", walk: false, name: "Ocean 🌊" },
+      coast:    { color: "#5fc4dd", walk: false, name: "Coast 🌊" },
+      grass:    { color: "#82c95e", walk: true,  name: "Grassland 🌿" },
+      plains:   { color: "#dcca77", walk: true,  name: "Plains 🌾" },
+      desert:   { color: "#f4dc9b", walk: true,  name: "Desert 🏜️ (Le Diggers love this!)" },
+      forest:   { color: "#78bd57", walk: true,  name: "Forest 🌲" },
+      mountain: { color: "#a5a3ae", walk: false, name: "Mountain ⛰️ (too steep!)" },
     };
 
     // Build a random island-ish map
@@ -96,13 +98,20 @@
           const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c); // distance from map edge
           const v = noise[r][c] - (edge === 0 ? 0.25 : 0);
           let t;
-          if (v < 0.42) t = "water";
+          if (v < 0.42) t = "ocean";
           else if (v < 0.48) t = "desert";
           else if (v < 0.55) t = "plains";
           else if (v < 0.62) t = "grass";
           else if (v < 0.67) t = "forest";
           else t = "mountain";
           map[r][c] = t;
+        }
+      }
+      // Step 4: ocean next to land becomes light turquoise coast (very Civ 6!)
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        if (map[r][c] === "ocean") {
+          const touchesLand = neighbors(r, c).some(n => map[n.r][n.c] !== "ocean" && map[n.r][n.c] !== "coast");
+          if (touchesLand) map[r][c] = "coast";
         }
       }
     }
@@ -185,29 +194,35 @@
     }
 
     function drawDecorations(x, y, t) {
-      // little cartoony details on top of tiles
+      // little cartoony details on top of tiles, Civ 6 style
       if (t === "forest") {
-        for (const dx of [-9, 3, -3]) {
-          ctx.fillStyle = "#2a6b2a";
-          ctx.beginPath();
-          ctx.moveTo(x + dx, y - 12);
-          ctx.lineTo(x + dx - 6, y + 2);
-          ctx.lineTo(x + dx + 6, y + 2);
-          ctx.closePath(); ctx.fill();
+        // puffy round trees like Civ 6
+        for (const [dx, dy] of [[-9, 2], [8, -1], [-1, -8]]) {
           ctx.fillStyle = "#7a4a1e";
-          ctx.fillRect(x + dx - 1.5, y + 2, 3, 5);
+          ctx.fillRect(x + dx - 1.5, y + dy + 2, 3, 6);
+          ctx.fillStyle = "#3f9142";
+          ctx.beginPath(); ctx.arc(x + dx, y + dy - 3, 6.5, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#57ab55"; // sunny side of the tree
+          ctx.beginPath(); ctx.arc(x + dx - 2, y + dy - 5, 3.5, 0, Math.PI * 2); ctx.fill();
         }
       } else if (t === "mountain") {
-        ctx.fillStyle = "#6f6f7d";
+        // big peak with a shaded side and snowy cap
+        ctx.fillStyle = "#7c7a8a";
         ctx.beginPath();
-        ctx.moveTo(x, y - 14); ctx.lineTo(x - 13, y + 10); ctx.lineTo(x + 13, y + 10);
+        ctx.moveTo(x - 2, y - 18); ctx.lineTo(x - 16, y + 12); ctx.lineTo(x + 16, y + 12);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle = "white"; // snowy top
+        ctx.fillStyle = "#615f70"; // shadow side
         ctx.beginPath();
-        ctx.moveTo(x, y - 14); ctx.lineTo(x - 4.5, y - 6); ctx.lineTo(x + 4.5, y - 6);
+        ctx.moveTo(x - 2, y - 18); ctx.lineTo(x + 16, y + 12); ctx.lineTo(x + 4, y + 12);
         ctx.closePath(); ctx.fill();
-      } else if (t === "water") {
-        ctx.strokeStyle = "#7db8ee"; ctx.lineWidth = 2;
+        ctx.fillStyle = "#f4f6fb"; // snowy top
+        ctx.beginPath();
+        ctx.moveTo(x - 2, y - 18); ctx.lineTo(x - 8, y - 5); ctx.lineTo(x - 2, y - 7);
+        ctx.lineTo(x + 2, y - 4); ctx.lineTo(x + 5, y - 6);
+        ctx.closePath(); ctx.fill();
+      } else if (t === "ocean" || t === "coast") {
+        ctx.strokeStyle = t === "coast" ? "#a8e6f2" : "#5b93d6";
+        ctx.lineWidth = 2; ctx.lineCap = "round";
         for (const dy of [-5, 4]) {
           ctx.beginPath();
           ctx.moveTo(x - 10, y + dy);
@@ -216,15 +231,29 @@
           ctx.stroke();
         }
       } else if (t === "desert") {
-        ctx.fillStyle = "#d9b567";
-        for (const [dx, dy] of [[-8, 4], [6, -6], [2, 8]]) {
-          ctx.beginPath(); ctx.arc(x + dx, y + dy, 2, 0, Math.PI * 2); ctx.fill();
+        // sand dunes
+        ctx.strokeStyle = "#d9b567"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+        for (const [dx, dy] of [[-8, 3], [7, -5], [1, 9]]) {
+          ctx.beginPath();
+          ctx.moveTo(x + dx - 6, y + dy);
+          ctx.quadraticCurveTo(x + dx, y + dy - 5, x + dx + 6, y + dy);
+          ctx.stroke();
+        }
+      } else if (t === "grass") {
+        // tiny tufts of grass
+        ctx.strokeStyle = "#5da844"; ctx.lineWidth = 2; ctx.lineCap = "round";
+        for (const [dx, dy] of [[-8, 4], [7, -4], [0, 9]]) {
+          ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx - 2, y + dy - 5); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx + 2, y + dy - 5); ctx.stroke();
         }
       }
     }
 
     function drawDigger(x, y) {
       // Le Diggers wear yellow and orange!
+      // soft shadow under his feet
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.beginPath(); ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
       // body
       ctx.fillStyle = "#f28c1e";
       ctx.beginPath(); ctx.ellipse(x, y + 6, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
@@ -244,10 +273,10 @@
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // tiles
+      // tiles with a soft white grid, like Civ 6
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
-        drawHex(p.x, p.y, HEX - 1, TERRAIN[map[r][c]].color, "#10102a", 2);
+        drawHex(p.x, p.y, HEX, TERRAIN[map[r][c]].color, "rgba(255,255,255,0.22)", 1.5);
         drawDecorations(p.x, p.y, map[r][c]);
       }
       // green rings = where you can move
