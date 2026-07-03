@@ -329,6 +329,7 @@
         }
         ring = next;
       }
+      terrainDirty = true; // new tiles uncovered — repaint the terrain!
     }
     function isExplored(r, c) { return explored.has(r + "," + c); }
 
@@ -565,6 +566,34 @@
       return result;
     }
 
+    // find the exact tile-by-tile path a unit will walk
+    function pathTo(unit, target) {
+      const startKey = unit.r + "," + unit.c;
+      const parent = { [startKey]: null };
+      let frontier = [{ r: unit.r, c: unit.c }];
+      let depth = 0;
+      while (frontier.length && depth < unit.moves) {
+        depth++;
+        const next = [];
+        for (const cur of frontier) {
+          for (const n of neighbors(cur.r, cur.c)) {
+            const key = n.r + "," + n.c;
+            if (key in parent || !TERRAIN[map[n.r][n.c]].walk) continue;
+            const town = cityAt(n.r, n.c);
+            if (town && town.owner !== unit.owner) continue;
+            parent[key] = cur;
+            next.push(n);
+          }
+        }
+        frontier = next;
+      }
+      if (!((target.r + "," + target.c) in parent) || unitAt(target.r, target.c)) return null;
+      const path = [];
+      let cur = { r: target.r, c: target.c };
+      while (cur) { path.unshift({ r: cur.r, c: cur.c }); cur = parent[cur.r + "," + cur.c]; }
+      return path;
+    }
+
     // ===== CITY MATH =====
     // what one tile gives (terrain + any resource sitting on it)
     function tileYield(r, c) {
@@ -719,7 +748,18 @@
 
     // ===== DRAWING =====
     const canvas = document.getElementById("game");
-    const ctx = canvas.getContext("2d");
+    const mainCtx = canvas.getContext("2d");
+    let ctx = mainCtx; // helpers draw into this — sometimes we point it at the terrain painting
+
+    // The whole terrain gets painted ONCE onto a hidden canvas.
+    // Every frame we just stamp that painting down — super fast,
+    // which lets us animate units at 60 frames a second!
+    const terrainLayer = document.createElement("canvas");
+    terrainLayer.width = WORLD_W;
+    terrainLayer.height = WORLD_H;
+    const terrainCtx = terrainLayer.getContext("2d");
+    let terrainDirty = true; // repaint when fog is uncovered
+    let animTime = 0;        // the game's clock, for pulsing and walking
 
     function hexCorner(x, y, size, i) {
       const a = Math.PI / 180 * (60 * i - 30);
@@ -832,15 +872,23 @@
       }
     }
 
-    function drawUnit(u, x, y) {
+    function drawUnit(u, x, y, walkPhase) {
       const civ = CIVS[u.owner];
       const type = u.type;
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
+      // little feet — they scamper back and forth while walking!
+      const stride = walkPhase === null ? 0 : Math.sin(walkPhase * Math.PI * 4) * 4;
+      ctx.fillStyle = shade(civ.shirt, 0.55);
+      ctx.beginPath(); ctx.ellipse(x - 4 + stride, y + 14, 3, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x + 4 - stride, y + 14, 3, 2.2, 0, 0, Math.PI * 2); ctx.fill();
+      // body with a clean cartoon outline
       ctx.fillStyle = civ.shirt;
       ctx.beginPath(); ctx.ellipse(x, y + 6, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = civ.skin;
       ctx.beginPath(); ctx.arc(x, y - 8, 7, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 1.5; ctx.stroke();
       if (civ.head === "pig") {
         ctx.fillStyle = civ.skin;
         ctx.beginPath(); ctx.moveTo(x - 6, y - 13); ctx.lineTo(x - 8, y - 19); ctx.lineTo(x - 2, y - 15); ctx.closePath(); ctx.fill();
@@ -908,6 +956,25 @@
       ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#7a4a1e";
       ctx.fillRect(x - 8, y + 5, 5, 8);
+      // bigger cities get more buildings!
+      if (city.pop >= 4) {
+        ctx.fillStyle = "#ddd0b0";
+        ctx.fillRect(x + 14, y - 1, 8, 14);
+        ctx.fillStyle = "#a8342a";
+        ctx.beginPath();
+        ctx.moveTo(x + 12, y - 1); ctx.lineTo(x + 18, y - 7); ctx.lineTo(x + 24, y - 1);
+        ctx.closePath(); ctx.fill();
+      }
+      if (city.pop >= 7) {
+        ctx.fillStyle = "#cfc3a4";
+        ctx.fillRect(x - 22, y - 8, 7, 21);
+        ctx.fillStyle = "#8a8faa";
+        ctx.beginPath();
+        ctx.moveTo(x - 23.5, y - 8); ctx.lineTo(x - 18.5, y - 16); ctx.lineTo(x - 13.5, y - 8);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#ffe27a"; // glowing window
+        ctx.fillRect(x - 20.5, y - 4, 3, 3);
+      }
       // the civ's flag on the big house
       ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 5.5, y - 12); ctx.lineTo(x - 5.5, y - 22); ctx.stroke();
@@ -958,10 +1025,9 @@
       }
     }
 
-    function draw() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.save();
-      ctx.translate(-cam.x, -cam.y);
+    function renderTerrain() {
+      ctx = terrainCtx; // paint onto the hidden terrain painting
+      ctx.clearRect(0, 0, WORLD_W, WORLD_H);
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
         if (!isExplored(r, c)) {
@@ -978,6 +1044,8 @@
           drawSkirt(p.x, top, HEX, LIFT[t] + 4, shade(TERRAIN[t].color, 0.55));
         }
         drawHex(p.x, top, HEX, TERRAIN[t].color, "rgba(255,255,255,0.22)", 1.5);
+        // a soft sunlight glow from the top-left, like Civ 6's lighting
+        drawHex(p.x - 1.5, top - 2.5, HEX - 6, "rgba(255,255,240,0.09)", null, 0);
         drawDecorations(p.x, top, t);
         const res = resources[r + "," + c];
         if (res) {
@@ -990,6 +1058,15 @@
           ctx.textBaseline = "alphabetic";
         }
       }
+      ctx = mainCtx; // back to the real screen
+    }
+
+    function draw() {
+      if (terrainDirty) { renderTerrain(); terrainDirty = false; }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate(-cam.x, -cam.y);
+      ctx.drawImage(terrainLayer, 0, 0);
       drawBorders();
       for (const city of cities) {
         if (isExplored(city.r, city.c)) drawCity(city);
@@ -1010,20 +1087,65 @@
         ctx.textBaseline = "alphabetic";
       }
       if (selected) {
+        // gently pulsing green rings show where you can go
+        ctx.globalAlpha = 0.65 + 0.35 * Math.sin(animTime * 5);
         for (const t of reachableTiles(selected)) {
           const p = hexCenter(t.r, t.c);
           drawHex(p.x, p.y - liftAt(t.r, t.c), HEX - 5, null, "#33ff88", 3.5);
         }
+        ctx.globalAlpha = 1;
       }
       for (const u of units) {
-        if (u.owner !== playerKey && !isExplored(u.r, u.c)) continue; // hidden in fog
-        const p = hexCenter(u.r, u.c);
-        const top = p.y - liftAt(u.r, u.c);
-        if (u === selected) drawHex(p.x, top, HEX - 3, null, "#ffffff", 3);
-        drawUnit(u, p.x, top);
+        let x, y;
+        if (u.anim) {
+          // walking! slide between tiles with a happy little hop
+          const a = u.anim;
+          const p1 = a.path[a.seg];
+          const p2 = a.path[Math.min(a.seg + 1, a.path.length - 1)];
+          if (u.owner !== playerKey && !isExplored(p1.r, p1.c) && !isExplored(p2.r, p2.c)) continue;
+          const c1 = hexCenter(p1.r, p1.c), c2 = hexCenter(p2.r, p2.c);
+          const t1 = c1.y - liftAt(p1.r, p1.c), t2 = c2.y - liftAt(p2.r, p2.c);
+          x = c1.x + (c2.x - c1.x) * a.t;
+          y = t1 + (t2 - t1) * a.t - Math.abs(Math.sin(a.t * Math.PI)) * 5;
+        } else {
+          if (u.owner !== playerKey && !isExplored(u.r, u.c)) continue; // hidden in fog
+          const p = hexCenter(u.r, u.c);
+          x = p.x; y = p.y - liftAt(u.r, u.c);
+        }
+        if (u === selected) {
+          ctx.globalAlpha = 0.6 + 0.4 * Math.sin(animTime * 6);
+          drawHex(x, y, HEX - 3, null, "#ffffff", 3);
+          ctx.globalAlpha = 1;
+        }
+        drawUnit(u, x, y, u.anim ? u.anim.t : null);
       }
       ctx.restore();
     }
+
+    // move all the walking animations forward a tiny bit each frame
+    function updateAnimations(dt) {
+      for (const u of units) {
+        if (!u.anim) continue;
+        u.anim.t += dt * 3; // walking speed: 3 tiles per second
+        while (u.anim && u.anim.t >= 1) {
+          u.anim.t -= 1;
+          u.anim.seg++;
+          if (u.anim.seg >= u.anim.path.length - 1) u.anim = null;
+        }
+      }
+    }
+
+    // the heartbeat of the game: draws a fresh frame 60 times a second
+    let lastFrameTs = 0;
+    function frame(ts) {
+      const dt = Math.min(0.05, (ts - lastFrameTs) / 1000 || 0);
+      lastFrameTs = ts;
+      animTime = ts / 1000;
+      updateAnimations(dt);
+      if (playerKey) draw();
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
 
     // ===== UI PANELS =====
     const info = document.getElementById("info");
@@ -1196,12 +1318,12 @@
           info.textContent = "That's " + town.name + ", a city of " + CIVS[town.owner].name + "!";
         }
       } else if (selected) {
-        const ok = reachableTiles(selected).some(t => t.r === hex.r && t.c === hex.c);
-        if (ok) {
-          const oneStep = neighbors(selected.r, selected.c).some(n => n.r === hex.r && n.c === hex.c);
-          selected.moves -= oneStep ? 1 : 2;
+        const path = pathTo(selected, hex);
+        if (path) {
+          selected.moves -= path.length - 1; // one move point per step walked
           selected.r = hex.r; selected.c = hex.c;
-          reveal(hex.r, hex.c, 2);
+          selected.anim = { path, seg: 0, t: 0 }; // walk it, don't teleport!
+          for (const step of path) reveal(step.r, step.c, 2); // see everything along the way
           info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
           if (selected.moves <= 0) selected = null;
           checkMeetings();
@@ -1423,6 +1545,7 @@
           !(cityAt(n.r, n.c) && cityAt(n.r, n.c).owner !== u.owner));
         if (opts.length) {
           const n = opts[Math.floor(Math.random() * opts.length)];
+          u.anim = { path: [{ r: u.r, c: u.c }, { r: n.r, c: n.c }], seg: 0, t: 0 };
           u.r = n.r; u.c = n.c;
         }
       }
