@@ -39,10 +39,52 @@
       cursor: pointer;
     }
     button:hover { background: #ffd966; }
+    /* the choose-your-civilization screen */
+    #picker {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 10, 30, 0.94);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      overflow: auto;
+    }
+    #picker h2 { margin: 10px; font-size: 1.8em; }
+    #civList {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+      max-width: 980px;
+    }
+    .civCard {
+      width: 220px;
+      background: #23234a;
+      border: 2px solid #4466aa;
+      border-radius: 12px;
+      padding: 10px;
+      color: white;
+      font-size: 0.85em;
+      text-align: left;
+      cursor: pointer;
+      margin: 0;
+      font-weight: normal;
+    }
+    .civCard:hover { background: #2f2f66; border-color: #ffd966; transform: scale(1.04); }
+    .civCard .civName { font-size: 1.15em; font-weight: bold; }
+    .civCard .stripe { height: 8px; border-radius: 4px; margin: 6px 0; }
+    .civCard .leader { color: #ffd966; }
+    .civCard .ability { color: #b9c4e8; }
   </style>
 </head>
 <body>
-  <h1>⛏️ Le Diggers — Settle the Land!</h1>
+  <div id="picker">
+    <h2>🌍 Choose Your Civilization!</h2>
+    <div id="civList"></div>
+  </div>
+  <h1 id="title">🌍 Our Game</h1>
   <div id="info">Click your settler, move him somewhere nice, then press Found City!</div>
   <canvas id="game" width="1000" height="520"></canvas>
   <div>
@@ -198,18 +240,104 @@
     }
     function isExplored(r, c) { return explored.has(r + "," + c); }
 
+    // ===== THE CIVILIZATIONS =====
+    // All seven civilizations from the presentation!
+    // "primary" and "secondary" are the border colors.
+    // Some abilities need parts of the game we haven't built yet — those say "soon".
+    const CIVS = {
+      diggers: {
+        name: "Le Diggers", leader: "Edward", emoji: "⛏️",
+        primary: "#2b6fd4", secondary: "#ffd21f",
+        shirt: "#f28c1e", skin: "#ffd9a6", hat: "#ffcf1f", head: "human",
+        moveBonus: 0,
+        ability: "Improved desert tiles +2 production (soon — when tiles get worked)",
+        cityNames: ["Digtown", "Shovelburg", "Le Big Dig", "Sandcastle", "Trench City", "Dustopolis", "Holeville", "Excavation Station"],
+      },
+      ginglewhoppers: {
+        name: "The Ginglewhoppers", leader: "Professor Ginglewhop", emoji: "🧪",
+        primary: "#2b6fd4", secondary: "#f28c1e",
+        shirt: "#2b6fd4", skin: "#7fc25e", hat: "#b5651d", head: "human",
+        moveBonus: 0,
+        ability: "+1 great engineer & scientist point per improved luxury (soon)",
+        cityNames: ["Ginglewhop City", "Whopperville", "Labtown", "Gadgetburg", "Fizzleton", "Beakerburg"],
+      },
+      boland: {
+        name: "Boland", leader: "Bolun the Kung Fu Monk", emoji: "🥋",
+        primary: "#2e9e4f", secondary: "#ffffff",
+        shirt: "#ece8dc", skin: "#ffd9a6", hat: "#2e2e2e", head: "human",
+        moveBonus: 0,
+        ability: "A free social policy every new era (soon — when eras arrive)",
+        cityNames: ["Bo Town", "Dojo City", "Monk Peak", "Kickford", "Silent Fist", "Waxon Falls"],
+      },
+      pigmen: {
+        name: "The Pig-men", leader: "Pigathy", emoji: "🐷",
+        primary: "#f2c21f", secondary: "#d43a2b",
+        shirt: "#3a6fd8", skin: "#f5a8c0", hat: "#3a6fd8", head: "pig",
+        moveBonus: 0,
+        ability: "Their cavalry are actual pigs (soon — when cavalry gallops in)",
+        cityNames: ["Oinkville", "Hamlet", "Porkopolis", "Snoutburg", "Muddy Springs", "Truffle Town"],
+      },
+      pigeonians: {
+        name: "The Pigeonians", leader: "Dave the Pigeon", emoji: "🐦",
+        primary: "#2b2b33", secondary: "#3fbf5a",
+        shirt: "#8b93a3", skin: "#a9b2c0", hat: "#6d7585", head: "pigeon",
+        moveBonus: 0,
+        ability: "Everyone is a pigeon. That is the ability.",
+        cityNames: ["Coo York", "Featherton", "Crumbville", "Perch City", "Statue Square", "Breadwin"],
+      },
+      humanity: {
+        name: "Humanity", leader: "Adam the Great", emoji: "👑",
+        primary: "#7a3fd4", secondary: "#ffd21f",
+        shirt: "#7a3fd4", skin: "#ffd9a6", hat: "#ffd21f", head: "human",
+        moveBonus: 0,
+        ability: "+6 culture in the capital, −1 per civ or city-state met (soon — when culture flows)",
+        cityNames: ["Adamopolis", "Greatville", "Purple Palace", "Awesome Falls", "Majesty Bay", "Humantown"],
+      },
+      skooter: {
+        name: "The Skooter Dudes", leader: "King Meir", emoji: "🛴",
+        primary: "#5fc4dd", secondary: "#7a3fd4",
+        shirt: "#5fc4dd", skin: "#ffd9a6", hat: "#7a3fd4", head: "human",
+        moveBonus: 1,
+        ability: "WORKS NOW: +1 movement for ALL units! (+2 for infantry, later)",
+        cityNames: ["Skoot City", "Helmet Heights", "Kickflip Bay", "Rolling Meadows", "Meirville", "Two Wheels"],
+      },
+    };
+    let playerCiv = null; // picked on the title screen
+
+    // ===== LUXURY RESOURCES =====
+    // Adam and Meir's special resources, scattered around the world
+    const RESOURCES = {
+      darkmatter: { name: "Dark Matter 🌌", desc: "+1 gold (and 2x healing for units born nearby, soon!)", color: "#8a4fd4" },
+      bobtonium:  { name: "Bobtonium 🔶",  desc: "+3 production, +1 gold", color: "#e07820" },
+      joetonium:  { name: "Joetonium 🟢",  desc: "+4 food, +1 gold", color: "#3fae4a" },
+    };
+    let resources = {}; // "row,col" -> resource key
+
+    function scatterResources() {
+      resources = {};
+      for (const key of Object.keys(RESOURCES)) {
+        let placed = 0, tries = 0;
+        while (placed < 8 && tries++ < 3000) {
+          const r = Math.floor(Math.random() * ROWS);
+          const c = Math.floor(Math.random() * COLS);
+          const t = map[r][c];
+          if (TERRAIN[t].walk && t !== "forest" && !resources[r + "," + c]) {
+            resources[r + "," + c] = key;
+            placed++;
+          }
+        }
+      }
+    }
+
     // ===== UNITS AND CITIES =====
-    // Le Diggers units: a settler (founds cities) and a scout (explores fast!)
+    // Units: a settler (founds cities) and a scout (explores fast!)
     let units = [];      // everyone on the map
     let selected = null; // the unit you clicked on
     let cities = [];
 
-    // Fun Le Diggers city names — first city gets the first name, and so on
-    const CITY_NAMES = ["Digtown", "Shovelburg", "Le Big Dig", "Sandcastle",
-                        "Trench City", "Dustopolis", "Holeville", "Excavation Station"];
-
     function makeUnit(type, r, c) {
-      const maxMoves = type === "scout" ? 3 : 2; // scouts are speedy
+      // scouts are speedy — and Skooter Dudes make EVERYONE speedy
+      const maxMoves = (type === "scout" ? 3 : 2) + playerCiv.moveBonus;
       return { type, r, c, moves: maxMoves, maxMoves };
     }
 
@@ -351,20 +479,39 @@
     }
 
     function drawUnit(x, y, type) {
-      // Le Diggers wear yellow and orange!
+      // every civ's units get their own colors, skin, and face!
+      const civ = playerCiv;
       // soft shadow under their feet
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
       // body
-      ctx.fillStyle = "#f28c1e";
+      ctx.fillStyle = civ.shirt;
       ctx.beginPath(); ctx.ellipse(x, y + 6, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
       // head
-      ctx.fillStyle = "#ffd9a6";
+      ctx.fillStyle = civ.skin;
       ctx.beginPath(); ctx.arc(x, y - 8, 7, 0, Math.PI * 2); ctx.fill();
-      // yellow hard hat
-      ctx.fillStyle = "#ffcf1f";
-      ctx.beginPath(); ctx.arc(x, y - 10, 7.5, Math.PI, 0); ctx.fill();
-      ctx.fillRect(x - 9, y - 10, 18, 3);
+      if (civ.head === "pig") {
+        // pig ears and snout for the Pig-men!
+        ctx.fillStyle = civ.skin;
+        ctx.beginPath(); ctx.moveTo(x - 6, y - 13); ctx.lineTo(x - 8, y - 19); ctx.lineTo(x - 2, y - 15); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x + 6, y - 13); ctx.lineTo(x + 8, y - 19); ctx.lineTo(x + 2, y - 15); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#e87fa0";
+        ctx.beginPath(); ctx.ellipse(x, y - 6, 4, 3, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = "#c95f84";
+        ctx.beginPath(); ctx.arc(x - 1.5, y - 6, 0.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 1.5, y - 6, 0.8, 0, Math.PI * 2); ctx.fill();
+      } else if (civ.head === "pigeon") {
+        // beak and beady eye for the Pigeonians!
+        ctx.fillStyle = "#f2a531";
+        ctx.beginPath(); ctx.moveTo(x + 6, y - 9); ctx.lineTo(x + 13, y - 7); ctx.lineTo(x + 6, y - 5); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#222";
+        ctx.beginPath(); ctx.arc(x + 3, y - 10, 1.5, 0, Math.PI * 2); ctx.fill();
+      } else {
+        // hat (hard hat, helmet, hair... every civ wears it differently)
+        ctx.fillStyle = civ.hat;
+        ctx.beginPath(); ctx.arc(x, y - 10, 7.5, Math.PI, 0); ctx.fill();
+        ctx.fillRect(x - 9, y - 10, 18, 3);
+      }
       if (type === "settler") {
         // the settler carries a shovel
         ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
@@ -372,14 +519,21 @@
         ctx.fillStyle = "#9aa0aa";
         ctx.beginPath(); ctx.ellipse(x + 11, y + 12, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
       } else {
-        // the scout carries the Le Diggers flag
+        // the scout carries the civilization's flag
         ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(x + 11, y - 18); ctx.lineTo(x + 11, y + 12); ctx.stroke();
-        ctx.fillStyle = "#ffcf1f";
+        ctx.fillStyle = civ.secondary;
         ctx.beginPath();
         ctx.moveTo(x + 11, y - 18); ctx.lineTo(x + 24, y - 14); ctx.lineTo(x + 11, y - 10);
         ctx.closePath(); ctx.fill();
       }
+      // Civ 6 style banner floating above the unit
+      ctx.fillStyle = civ.primary;
+      ctx.beginPath(); ctx.arc(x, y - 28, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.font = "9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(type === "settler" ? "🏠" : "🔭", x, y - 27);
+      ctx.textBaseline = "alphabetic";
     }
 
     function drawCity(city) {
@@ -405,10 +559,10 @@
       // door
       ctx.fillStyle = "#7a4a1e";
       ctx.fillRect(x - 8, y + 5, 5, 8);
-      // Le Diggers flag on the big house
+      // your civilization's flag on the big house
       ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 5.5, y - 12); ctx.lineTo(x - 5.5, y - 22); ctx.stroke();
-      ctx.fillStyle = "#ffcf1f";
+      ctx.fillStyle = playerCiv.secondary;
       ctx.beginPath();
       ctx.moveTo(x - 5.5, y - 22); ctx.lineTo(x + 4, y - 19); ctx.lineTo(x - 5.5, y - 16);
       ctx.closePath(); ctx.fill();
@@ -440,9 +594,9 @@
           const outside = !beyond || !owned.has(beyond.r + "," + beyond.c);
           if (outside) {
             ctx.lineCap = "round";
-            ctx.strokeStyle = "#2b6fd4"; ctx.lineWidth = 6;
+            ctx.strokeStyle = playerCiv.primary; ctx.lineWidth = 6;
             ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-            ctx.strokeStyle = "#ffd21f"; ctx.lineWidth = 2.5;
+            ctx.strokeStyle = playerCiv.secondary; ctx.lineWidth = 2.5;
             ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
           }
         }
@@ -473,6 +627,19 @@
         }
         drawHex(p.x, top, HEX, TERRAIN[t].color, "rgba(255,255,255,0.22)", 1.5);
         drawDecorations(p.x, top, t);
+        // luxury resource icon in a little circle, Civ 6 style
+        const res = resources[r + "," + c];
+        if (res) {
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 8, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = RESOURCES[res].color; ctx.lineWidth = 2; ctx.stroke();
+          ctx.fillStyle = RESOURCES[res].color;
+          ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 4, 0, Math.PI * 2); ctx.fill();
+          if (res === "darkmatter") { // sparkles!
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(p.x - 14.5, top + 8.5, 1.2, 0, Math.PI * 2); ctx.fill();
+          }
+        }
       }
       // country borders go on top of the tiles
       drawBorders();
@@ -565,7 +732,7 @@
         return;
       }
       // the settler becomes the city — and a scout pops out to keep exploring!
-      const city = { r: settler.r, c: settler.c, name: CITY_NAMES[cities.length % CITY_NAMES.length] };
+      const city = { r: settler.r, c: settler.c, name: playerCiv.cityNames[cities.length % playerCiv.cityNames.length] };
       cities.push(city);
       reveal(city.r, city.c, 2); // a new city sees far around itself
       units = units.filter(u => u !== settler);
@@ -593,9 +760,14 @@
       const rect = canvas.getBoundingClientRect();
       const hex = pixelToHex(e.clientX - rect.left + cam.x, e.clientY - rect.top + cam.y);
       if (hex && !selected) {
-        info.textContent = isExplored(hex.r, hex.c)
-          ? TERRAIN[map[hex.r][hex.c]].name
-          : "Unexplored ☁️ — send a scout!";
+        if (!isExplored(hex.r, hex.c)) {
+          info.textContent = "Unexplored ☁️ — send a scout!";
+        } else {
+          let text = TERRAIN[map[hex.r][hex.c]].name;
+          const res = resources[hex.r + "," + hex.c];
+          if (res) text += "  •  " + RESOURCES[res].name + " (" + RESOURCES[res].desc + ")";
+          info.textContent = text;
+        }
       }
     });
 
@@ -610,11 +782,33 @@
     });
 
     // ===== START THE GAME =====
-    makeMap();
-    placeSettlerOnLand();
-    reveal(units[0].r, units[0].c, 2);
-    centerCameraOn(units[0].r, units[0].c);
-    draw();
+    // First, build the choose-your-civilization screen
+    const civList = document.getElementById("civList");
+    for (const [key, civ] of Object.entries(CIVS)) {
+      const card = document.createElement("button");
+      card.className = "civCard";
+      card.innerHTML =
+        '<div class="civName">' + civ.emoji + " " + civ.name + "</div>" +
+        '<div class="stripe" style="background: linear-gradient(90deg,' + civ.primary + " 50%," + civ.secondary + ' 50%)"></div>' +
+        '<div class="leader">Leader: ' + civ.leader + "</div>" +
+        '<div class="ability">' + civ.ability + "</div>";
+      card.addEventListener("click", () => startGame(key));
+      civList.appendChild(card);
+    }
+
+    function startGame(key) {
+      playerCiv = CIVS[key];
+      document.getElementById("picker").style.display = "none";
+      document.getElementById("title").textContent =
+        playerCiv.emoji + " " + playerCiv.name + " — Settle the Land!";
+      makeMap();
+      scatterResources();
+      placeSettlerOnLand();
+      reveal(units[0].r, units[0].c, 2);
+      centerCameraOn(units[0].r, units[0].c);
+      info.textContent = playerCiv.leader + " says: move the settler somewhere nice, then press Found City! (Drag the map to explore)";
+      draw();
+    }
   </script>
 </body>
 </html>
