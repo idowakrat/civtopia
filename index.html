@@ -879,11 +879,16 @@
     // one little person (units can have more than one, like Civ 5's mini squads!)
     function drawFigure(x, y, s, civ, walkPhase) {
       const stride = walkPhase === null ? 0 : Math.sin(walkPhase * Math.PI * 4) * 4 * s;
+      // legs! they swing back and forth as the feet step
+      ctx.strokeStyle = shade(civ.shirt, 0.7); ctx.lineWidth = 3.5 * s; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(x - 3 * s, y + 8 * s); ctx.lineTo(x - 4 * s + stride, y + 15 * s); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x + 3 * s, y + 8 * s); ctx.lineTo(x + 4 * s - stride, y + 15 * s); ctx.stroke();
       ctx.fillStyle = shade(civ.shirt, 0.55);
-      ctx.beginPath(); ctx.ellipse(x - 4 * s + stride, y + 14 * s, 3 * s, 2.2 * s, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.ellipse(x + 4 * s - stride, y + 14 * s, 3 * s, 2.2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x - 4 * s + stride, y + 15.5 * s, 3 * s, 2.2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x + 4 * s - stride, y + 15.5 * s, 3 * s, 2.2 * s, 0, 0, Math.PI * 2); ctx.fill();
+      // body sits a little higher now, so the legs peek out underneath
       ctx.fillStyle = civ.shirt;
-      ctx.beginPath(); ctx.ellipse(x, y + 6 * s, 8 * s, 9 * s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.ellipse(x, y + 3.5 * s, 8 * s, 8 * s, 0, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.fillStyle = civ.skin;
       ctx.beginPath(); ctx.arc(x, y - 8 * s, 7 * s, 0, Math.PI * 2); ctx.fill();
