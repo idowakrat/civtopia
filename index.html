@@ -372,7 +372,7 @@
         primary: "#f2c21f", secondary: "#d43a2b",
         shirt: "#3a6fd8", skin: "#f5a8c0", hat: "#3a6fd8", head: "pig",
         moveBonus: 0,
-        ability: "Their cavalry are actual pigs (soon — when cavalry gallops in)",
+        ability: "WORKS NOW: their Knights ride actual pigs 🐖 (build Knights with Chivalry!)",
         cityNames: ["Oinkville", "Hamlet", "Porkopolis", "Snoutburg", "Muddy Springs", "Truffle Town"],
       },
       pigeonians: {
@@ -396,7 +396,7 @@
         primary: "#5fc4dd", secondary: "#7a3fd4",
         shirt: "#5fc4dd", skin: "#ffd9a6", hat: "#7a3fd4", head: "human",
         moveBonus: 1,
-        ability: "WORKS NOW: +1 movement for ALL units! (+2 for infantry, later)",
+        ability: "WORKS NOW: +1 movement for ALL units, +2 for infantry!",
         cityNames: ["Skoot City", "Helmet Heights", "Kickflip Bay", "Rolling Meadows", "Meirville", "Two Wheels"],
       },
       // not a real civilization — just lives in the CIVS list for colors & drawing
@@ -495,7 +495,7 @@
       agriculture:      { name: "Agriculture 🌱",      cost: 8,  col: 0, req: [], gives: "the start of everything — farms (soon)" },
       pottery:          { name: "Pottery 🏺",          cost: 15, col: 1, req: ["agriculture"], gives: "leads to Sailing, Calendar and Writing" },
       animal_husbandry: { name: "Animal Husbandry 🐄", cost: 15, col: 1, req: ["agriculture"], gives: "pastures for cattle and horses (soon)" },
-      archery:          { name: "Archery 🏹",          cost: 15, col: 1, req: ["agriculture"], gives: "Archers → the Ninja Ranger (soon!)" },
+      archery:          { name: "Archery 🏹",          cost: 15, col: 1, req: ["agriculture"], gives: "unlocks Archers (Boland: the Ninja Ranger!)" },
       mining:           { name: "Mining ⛏️",           cost: 15, col: 1, req: ["agriculture"], gives: "unlocks the Woodhenge 🪵 wonder" },
       sailing:          { name: "Sailing ⛵",          cost: 25, col: 2, req: ["pottery"], gives: "boats to cross the sea (soon)" },
       calendar:         { name: "Calendar 📅",         cost: 25, col: 2, req: ["pottery"], gives: "plantations for bananas (soon)" },
@@ -509,28 +509,30 @@
       horseback_riding: { name: "Horseback Riding 🐎", cost: 40, col: 3, req: ["the_wheel"], gives: "Knights → the Gingleraider (soon!)" },
       mathematics:      { name: "Mathematics ➗",      cost: 40, col: 3, req: ["the_wheel", "archery"], gives: "Catapults (soon)" },
       construction:     { name: "Construction 🏗️",     cost: 40, col: 3, req: ["masonry"], gives: "Colosseum (soon)" },
-      iron_working:     { name: "Iron Working ⚔️",     cost: 40, col: 3, req: ["bronze_working"], gives: "Swordsmen → the Un Digatron (soon!)" },
+      iron_working:     { name: "Iron Working ⚔️",     cost: 40, col: 3, req: ["bronze_working"], gives: "unlocks Swordsmen (Le Diggers: the Un Digatron!)" },
       theology:         { name: "Theology ⛪",         cost: 60, col: 4, req: ["philosophy", "calendar"], gives: "unlocks the Shrine ⛩️" },
       currency:         { name: "Currency 💰",         cost: 60, col: 4, req: ["mathematics"], gives: "unlocks the Market 🛒" },
       engineering:      { name: "Engineering ⚙️",      cost: 60, col: 4, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
       metal_casting:    { name: "Metal Casting 🔥",    cost: 60, col: 4, req: ["iron_working"], gives: "unlocks the Forge 🔥" },
       civil_service:    { name: "Civil Service 📋",    cost: 90, col: 5, req: ["philosophy", "currency"], gives: "Farms give +1 food" },
       education:        { name: "Education 🎓",        cost: 90, col: 5, req: ["theology"], gives: "unlocks the University" },
-      chivalry:         { name: "Chivalry 🏇",         cost: 90, col: 5, req: ["horseback_riding", "currency"], gives: "unlocks the Castle 🏰" },
+      chivalry:         { name: "Chivalry 🏇",         cost: 90, col: 5, req: ["horseback_riding", "currency"], gives: "unlocks the Castle 🏰 and Knights (Ginglewhoppers: the Gingleraider!)" },
       machinery:        { name: "Machinery ⛓️",        cost: 90, col: 5, req: ["engineering"], gives: "Camps give +1 production" },
       compass:          { name: "Compass 🧭",          cost: 90, col: 5, req: ["optics"], gives: "Harbors (soon)" },
-      steel:            { name: "Steel 🗡️",            cost: 120, col: 6, req: ["metal_casting"], gives: "Longswordsmen (soon!)" },
+      steel:            { name: "Steel 🗡️",            cost: 120, col: 6, req: ["metal_casting"], gives: "leads to Gunpowder" },
       physics:          { name: "Physics 🍎",          cost: 120, col: 6, req: ["metal_casting", "machinery"], gives: "Trebuchets (soon)" },
+      gunpowder:        { name: "Gunpowder 💥",        cost: 150, col: 6, req: ["steel"], gives: "unlocks Musketmen (Boland: the Bo-bo Monk!)" },
+      replaceable_parts: { name: "Replaceable Parts 🏭", cost: 220, col: 7, req: ["gunpowder", "physics"], gives: "unlocks Infantry (Humanity: the TOMA!)" },
     };
-    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval"];
-    const ERA_NAMES = ["Ancient", "Classical", "Medieval"];
+    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval", "Industrial"];
+    const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Industrial"];
     let currentEra = 0;
     function eraOf() { // your era = the newest tech you know
       let best = 0;
       for (const k of researched) {
         const t = TECHS[k];
         if (!t) continue;
-        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : 2;
+        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : t.col <= 6 ? 2 : 3;
         if (e > best) best = e;
       }
       return best;
@@ -576,11 +578,29 @@
     }
 
     // strength 0 means "can't fight" — those units get CAPTURED instead!
+    // "ranged" units shoot from up to 2 tiles away and take no damage back.
+    // "civ" units are special: only that civilization can build them
+    // (and they REPLACE the normal unit, straight from the presentation!)
     const UNIT_TYPES = {
       settler: { name: "Settler", cost: 55, icon: "🏠", strength: 0 },
       worker:  { name: "Worker",  cost: 30, icon: "🛠️", strength: 0 },
       scout:   { name: "Scout",   cost: 15, icon: "🔭", strength: 5 },
       warrior: { name: "Warrior", cost: 24, icon: "⚔️", strength: 8 },
+      archer:  { name: "Archer",  cost: 22, icon: "🏹", strength: 5, ranged: 7, tech: "archery" },
+      ninja_ranger: { name: "Ninja Ranger", cost: 22, icon: "🥷", strength: 5, ranged: 7, moves: 4,
+                      tech: "archery", civ: "boland", replaces: "archer" },
+      swordsman: { name: "Swordsman", cost: 40, icon: "🗡️", strength: 14, tech: "iron_working" },
+      digatron:  { name: "Un Digatron", cost: 40, icon: "⛏️", strength: 14, canBuild: true,
+                   tech: "iron_working", civ: "diggers", replaces: "swordsman" },
+      knight: { name: "Knight", cost: 55, icon: "🐴", strength: 20, moves: 4, tech: "chivalry" },
+      gingleraider: { name: "Gingleraider", cost: 55, icon: "🚲", strength: 11, ranged: 18, moves: 5,
+                      tech: "chivalry", civ: "ginglewhoppers", replaces: "knight" },
+      musketman: { name: "Musketman", cost: 60, icon: "💥", strength: 24, tech: "gunpowder" },
+      bobo: { name: "Bo-bo Monk", cost: 60, icon: "🥋", strength: 18, ignoreTerrain: true,
+              tech: "gunpowder", civ: "boland", replaces: "musketman" },
+      infantry: { name: "Infantry", cost: 90, icon: "🎖️", strength: 36, tech: "replaceable_parts", infantry: true },
+      toma: { name: "Toma", cost: 90, icon: "🗡️", strength: 38, amphibious: true,
+              tech: "replaceable_parts", civ: "humanity", replaces: "infantry", infantry: true },
     };
 
     // ===== SOCIAL POLICIES =====
@@ -654,8 +674,12 @@
     const met = new Set();      // civs we've met (for AI later!)
 
     function makeUnit(type, r, c, owner) {
-      let maxMoves = (type === "scout" ? 3 : 2) + CIVS[owner].moveBonus;
-      if (owner === playerKey && type === "warrior") {
+      const def = UNIT_TYPES[type];
+      let maxMoves = def.moves || (type === "scout" ? 3 : 2);
+      // King Meir's slide: +1 movement for ALL units, +2 for infantry!
+      if (owner === "skooter") maxMoves += def.infantry ? 2 : 1;
+      else maxMoves += CIVS[owner].moveBonus;
+      if (owner === playerKey && def.strength > 0) {
         if (adopted.has("honor")) maxMoves += 1;
         if (adopted.has("military_tradition")) maxMoves += 1;
       }
@@ -692,6 +716,12 @@
       return set;
     }
 
+    // amphibious units (the toma!) can swim across coast tiles
+    function canWalk(unit, r, c) {
+      if (TERRAIN[map[r][c]].walk) return true;
+      return map[r][c] === "coast" && !!UNIT_TYPES[unit.type].amphibious;
+    }
+
     function reachableTiles(unit) {
       if (!unit || unit.moves <= 0) return [];
       let frontier = [{ r: unit.r, c: unit.c, left: unit.moves }];
@@ -702,7 +732,7 @@
         if (cur.left === 0) continue;
         for (const n of neighbors(cur.r, cur.c)) {
           const key = n.r + "," + n.c;
-          if (seen[key] || !TERRAIN[map[n.r][n.c]].walk) continue;
+          if (seen[key] || !canWalk(unit, n.r, n.c)) continue;
           const town = cityAt(n.r, n.c);
           if (town && town.owner !== unit.owner) continue; // can't enter enemy cities
           seen[key] = true;
@@ -725,7 +755,7 @@
         for (const cur of frontier) {
           for (const n of neighbors(cur.r, cur.c)) {
             const key = n.r + "," + n.c;
-            if (key in parent || !TERRAIN[map[n.r][n.c]].walk) continue;
+            if (key in parent || !canWalk(unit, n.r, n.c)) continue;
             const town = cityAt(n.r, n.c);
             if (town && town.owner !== unit.owner) continue;
             parent[key] = cur;
@@ -771,7 +801,9 @@
         return { captured: true };
       }
       const aStr = UNIT_TYPES[att.type].strength;
-      const dStr = UNIT_TYPES[def.type].strength * defenseBonus(def.r, def.c);
+      // the bo-bo monk ignores ALL penalties from terrain (straight from the slide!)
+      const terrain = UNIT_TYPES[att.type].ignoreTerrain ? 1 : defenseBonus(def.r, def.c);
+      const dStr = UNIT_TYPES[def.type].strength * terrain;
       const ratio = aStr / dStr;
       def.hp -= Math.round(28 * ratio * (0.8 + Math.random() * 0.4));
       att.hp -= Math.round(28 / ratio * (0.8 + Math.random() * 0.4));
@@ -1029,6 +1061,16 @@
     // what can this city build right now?
     function buildOptions(city) {
       const opts = ["scout", "warrior", "worker", "settler"];
+      // advanced units unlocked by tech (special civ units REPLACE the normal one)
+      for (const [key, u] of Object.entries(UNIT_TYPES)) {
+        if (opts.includes(key) || !u.tech) continue;
+        if (!researched.has(u.tech)) continue;
+        if (u.civ && u.civ !== city.owner) continue;
+        const replacedByUnique = Object.values(UNIT_TYPES)
+          .some(u2 => u2.civ === city.owner && u2.replaces === key);
+        if (replacedByUnique) continue;
+        opts.push(key);
+      }
       for (const [key, b] of Object.entries(BUILDINGS)) {
         if (city.buildings.includes(key)) continue;
         if (b.tech && !researched.has(b.tech)) continue;
@@ -1327,6 +1369,24 @@
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(x - 3.5, y + 4.5); ctx.lineTo(x + 2, y - 2.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(x + 2.5, y - 0.5, 4.5, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+      } else if (type === "archer" || type === "ninja_ranger" || type === "gingleraider") { // bow & arrow
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.arc(x - 1.5, y, 4.5, -Math.PI / 2.4, Math.PI / 2.4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - 4, y); ctx.lineTo(x + 3, y); ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(x + 5, y); ctx.lineTo(x + 1.5, y - 2); ctx.lineTo(x + 1.5, y + 2);
+        ctx.closePath(); ctx.fill();
+      } else if (type === "swordsman" || type === "digatron" || type === "toma") { // the sword
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(x, y - 5.5); ctx.lineTo(x, y + 5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - 3.5, y + 1.5); ctx.lineTo(x + 3.5, y + 1.5); ctx.stroke();
+      } else if (type === "knight") { // horseshoe
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.arc(x, y, 4, Math.PI * 0.85, Math.PI * 2.15); ctx.stroke();
+      } else if (type === "musketman" || type === "bobo" || type === "infantry") { // the musket
+        ctx.lineWidth = 2.2;
+        ctx.beginPath(); ctx.moveTo(x - 4, y + 4.5); ctx.lineTo(x + 4, y - 4.5); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x - 3, y + 3.5, 1.6, 0, Math.PI * 2); ctx.fill();
       } else { // scout binoculars
         ctx.lineWidth = 1.8;
         ctx.beginPath(); ctx.arc(x - 2.8, y, 2.6, 0, Math.PI * 2); ctx.stroke();
@@ -1375,6 +1435,112 @@
         ctx.beginPath(); ctx.moveTo(x + 10, y + 8); ctx.lineTo(x + 16, y - 10); ctx.stroke();
         ctx.strokeStyle = "#9aa0aa"; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.arc(x + 16, y - 8, 6, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke();
+      } else if (type === "archer" || type === "ninja_ranger") {
+        drawFigure(x, y, 1, civ, walkPhase);
+        if (type === "ninja_ranger") {
+          // a ninja with shurikens, just like the slide!
+          ctx.fillStyle = "#1e1e26"; // black mask
+          ctx.fillRect(x - 7, y - 13, 14, 4);
+          ctx.fillStyle = "#e8e8f0"; // shuriken!
+          ctx.beginPath();
+          ctx.moveTo(x - 14, y - 2); ctx.lineTo(x - 11, y + 1); ctx.lineTo(x - 14, y + 4);
+          ctx.lineTo(x - 17, y + 1); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "#1e1e26";
+          ctx.beginPath(); ctx.arc(x - 14, y + 1, 1.2, 0, Math.PI * 2); ctx.fill();
+        }
+        // the bow
+        ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.arc(x + 12, y - 2, 9, -Math.PI / 2.6, Math.PI / 2.6); ctx.stroke();
+        ctx.strokeStyle = "#e8e8e8"; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(x + 14.5, y - 10); ctx.lineTo(x + 14.5, y + 6); ctx.stroke();
+      } else if (type === "swordsman" || type === "digatron") {
+        drawFigure(x, y, 1, civ, walkPhase);
+        // shining sword
+        ctx.strokeStyle = "#d8dce4"; ctx.lineWidth = 3.5; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(x + 11, y + 4); ctx.lineTo(x + 17, y - 15); ctx.stroke();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 9, y + 1); ctx.lineTo(x + 15, y + 3); ctx.stroke();
+        if (type === "digatron") {
+          // the Un Digatron never drops his digging shovel!
+          ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
+          ctx.beginPath(); ctx.moveTo(x - 13, y - 10); ctx.lineTo(x - 13, y + 8); ctx.stroke();
+          ctx.fillStyle = "#9aa0aa";
+          ctx.beginPath(); ctx.ellipse(x - 13, y + 11, 3.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = "#8a5a2a"; // wooden shield
+          ctx.beginPath(); ctx.arc(x - 10, y + 3, 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#5f3d1a"; ctx.lineWidth = 2; ctx.stroke();
+        }
+      } else if (type === "knight") {
+        // a rider on a mount — and Pig-men knights ride PIGS! 🐖
+        const pig = civ.head === "pig";
+        const mountColor = pig ? "#f5a8c0" : "#8a6242";
+        ctx.fillStyle = mountColor;
+        ctx.beginPath(); ctx.ellipse(x, y + 8, 13, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 13, y + 3, 5, 0, Math.PI * 2); ctx.fill(); // head
+        if (pig) {
+          ctx.fillStyle = "#e87fa0"; // snout
+          ctx.beginPath(); ctx.ellipse(x + 17, y + 4, 2.5, 2, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = mountColor; // ear
+          ctx.beginPath(); ctx.moveTo(x + 11, y - 1); ctx.lineTo(x + 10, y - 6); ctx.lineTo(x + 15, y - 2); ctx.closePath(); ctx.fill();
+        } else {
+          ctx.fillStyle = "#5a3a1a"; // mane
+          ctx.fillRect(x + 8, y - 3, 3, 8);
+        }
+        // legs
+        ctx.strokeStyle = shade(mountColor, 0.7); ctx.lineWidth = 3; ctx.lineCap = "round";
+        const trot = walkPhase === null ? 0 : Math.sin(walkPhase * Math.PI * 4) * 3;
+        ctx.beginPath(); ctx.moveTo(x - 7 + trot, y + 12); ctx.lineTo(x - 7 - trot, y + 17); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 7 - trot, y + 12); ctx.lineTo(x + 7 + trot, y + 17); ctx.stroke();
+        // the rider (smaller, sitting on top)
+        drawFigure(x - 2, y - 10, 0.7, civ, null);
+        // lance
+        ctx.strokeStyle = "#d8dce4"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(x + 6, y - 4); ctx.lineTo(x + 20, y - 16); ctx.stroke();
+      } else if (type === "gingleraider") {
+        // a person with an arrow, on a bike — exactly like slide 5!
+        ctx.strokeStyle = "#3a3a44"; ctx.lineWidth = 2.5;
+        const spin = walkPhase === null ? 0 : walkPhase * Math.PI * 2;
+        for (const dx of [-8, 8]) { // wheels
+          ctx.beginPath(); ctx.arc(x + dx, y + 11, 6, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + dx - 5 * Math.cos(spin), y + 11 - 5 * Math.sin(spin));
+          ctx.lineTo(x + dx + 5 * Math.cos(spin), y + 11 + 5 * Math.sin(spin));
+          ctx.stroke();
+        }
+        ctx.strokeStyle = "#d43a2b"; ctx.lineWidth = 2.5; // frame
+        ctx.beginPath(); ctx.moveTo(x - 8, y + 11); ctx.lineTo(x, y + 2); ctx.lineTo(x + 8, y + 11); ctx.stroke();
+        drawFigure(x - 1, y - 10, 0.75, civ, null);
+        // the arrow, held high!
+        ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + 6, y - 8); ctx.lineTo(x + 20, y - 18); ctx.stroke();
+        ctx.fillStyle = "#d8dce4";
+        ctx.beginPath();
+        ctx.moveTo(x + 22, y - 20); ctx.lineTo(x + 17, y - 19); ctx.lineTo(x + 20, y - 15);
+        ctx.closePath(); ctx.fill();
+      } else if (type === "musketman" || type === "infantry") {
+        drawFigure(x, y, 1, civ, walkPhase);
+        // long musket / rifle
+        ctx.strokeStyle = "#4a3a2a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(x + 8, y + 6); ctx.lineTo(x + 20, y - 12); ctx.stroke();
+        ctx.strokeStyle = "#8a8f9a"; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x + 16, y - 6); ctx.lineTo(x + 20, y - 12); ctx.stroke();
+      } else if (type === "bobo") {
+        // the bo-bo monk: looks like a monk, fights like a legend
+        drawFigure(x, y, 1, civ, walkPhase);
+        ctx.fillStyle = "#d43a2b"; // red monk sash
+        ctx.fillRect(x - 7, y + 1, 14, 3.5);
+        ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3; ctx.lineCap = "round"; // bo staff!
+        ctx.beginPath(); ctx.moveTo(x + 12, y - 18); ctx.lineTo(x + 12, y + 14); ctx.stroke();
+      } else if (type === "toma") {
+        // the TOMA: an infantry unit with a SWORD instead of a gun (slide 10!)
+        drawFigure(x, y, 1, civ, walkPhase);
+        ctx.fillStyle = "#ffd21f"; // golden hero band
+        ctx.fillRect(x - 7, y - 13, 14, 3);
+        ctx.strokeStyle = "#f0f4ff"; ctx.lineWidth = 4; ctx.lineCap = "round"; // a BIG sword
+        ctx.beginPath(); ctx.moveTo(x + 11, y + 6); ctx.lineTo(x + 19, y - 19); ctx.stroke();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 16, y + 5); ctx.stroke();
       } else {
         // the scout, striding with the civilization's flag
         drawFigure(x, y, 1, civ, walkPhase);
@@ -1708,7 +1874,7 @@
 
     function updateButtons() {
       foundBtn.style.display = (selected && selected.type === "settler") ? "" : "none";
-      const canImprove = selected && selected.type === "worker" && !selected.working &&
+      const canImprove = selected && (selected.type === "worker" || UNIT_TYPES[selected.type].canBuild) && !selected.working &&
         !improvements[selected.r + "," + selected.c] &&
         improvementFor(selected.r, selected.c) &&
         territorySet(playerKey).has(selected.r + "," + selected.c);
@@ -1842,7 +2008,9 @@
       }
       adopted.add(key);
       if (key === "honor" || key === "military_tradition") {
-        for (const u of units) if (u.owner === playerKey && u.type === "warrior") { u.maxMoves++; u.moves++; }
+        for (const u of units) {
+          if (u.owner === playerKey && UNIT_TYPES[u.type].strength > 0) { u.maxMoves++; u.moves++; }
+        }
       }
       if (key === "legalism") {
         const cap = capitalOf(playerKey);
@@ -1866,10 +2034,58 @@
       document.getElementById("policyPanel").style.display = "none";
     });
 
+    // hex distance (how many steps between two tiles)
+    function hexDist(r1, c1, r2, c2) {
+      const x1 = c1 - (r1 - (r1 & 1)) / 2, z1 = r1, y1 = -x1 - z1;
+      const x2 = c2 - (r2 - (r2 & 1)) / 2, z2 = r2, y2 = -x2 - z2;
+      return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2), Math.abs(z1 - z2));
+    }
+
+    // arrows fly! ranged units shoot without getting hit back
+    function rangedStrike(att, targetR, targetC) {
+      const rStr = UNIT_TYPES[att.type].ranged;
+      const defUnit = unitAt(targetR, targetC);
+      const town = cityAt(targetR, targetC);
+      declareWar(defUnit ? defUnit.owner : town.owner);
+      if (defUnit) {
+        if (UNIT_TYPES[defUnit.type].strength === 0) {
+          units = units.filter(u => u !== defUnit);
+          say("🏹 Your arrows scattered their " + UNIT_TYPES[defUnit.type].name + "!");
+        } else {
+          const dStr = UNIT_TYPES[defUnit.type].strength * defenseBonus(defUnit.r, defUnit.c);
+          defUnit.hp -= Math.round(28 * (rStr / dStr) * (0.8 + Math.random() * 0.4));
+          if (defUnit.hp <= 0) {
+            units = units.filter(u => u !== defUnit);
+            say("🏹 Bullseye! Enemy " + UNIT_TYPES[defUnit.type].name + " destroyed from afar!");
+          } else {
+            say("🏹 Direct hit! Enemy " + UNIT_TYPES[defUnit.type].name + " at " + defUnit.hp + " HP");
+          }
+        }
+      } else if (town) {
+        const dmg = Math.round(28 * (rStr / cityStrength(town)) * (0.8 + Math.random() * 0.4));
+        town.hp = Math.max(1, town.hp - dmg); // arrows can't CAPTURE a city — send melee to finish it!
+        say("🏹 You bombarded " + town.name + " — city at " + town.hp + " HP" + (town.hp === 1 ? " (send a melee unit to capture it!)" : ""));
+      }
+    }
+
     // your unit marches up and WHACKS the target (unit or city)
     function playerAttack(unit, targetR, targetC) {
       if (UNIT_TYPES[unit.type].strength === 0) {
         info.textContent = "That unit can't fight! Bring a Warrior.";
+        return;
+      }
+      // ranged units (Archers, Ninja Rangers, the Gingleraider) shoot from 2 tiles away!
+      if (UNIT_TYPES[unit.type].ranged) {
+        if (hexDist(unit.r, unit.c, targetR, targetC) > 2) {
+          info.textContent = "Too far! Ranged units shoot up to 2 tiles — move closer first.";
+          return;
+        }
+        if (unit.moves <= 0) { info.textContent = "No moves left to shoot!"; return; }
+        unit.moves = 0;
+        rangedStrike(unit, targetR, targetC);
+        selected = null;
+        checkMeetings();
+        showMessages();
         return;
       }
       const adjacent = neighbors(unit.r, unit.c).some(n => n.r === targetR && n.c === targetC);
@@ -2073,7 +2289,8 @@
     });
 
     improveBtn.addEventListener("click", () => {
-      if (!selected || selected.type !== "worker" || selected.working) return;
+      if (!selected || selected.working) return;
+      if (selected.type !== "worker" && !UNIT_TYPES[selected.type].canBuild) return;
       const type = improvementFor(selected.r, selected.c);
       const key = selected.r + "," + selected.c;
       if (!type || improvements[key]) return;
@@ -2098,7 +2315,7 @@
     document.getElementById("endTurn").addEventListener("click", () => {
       // 0. workers finish their projects
       for (const u of units) {
-        if (u.owner === playerKey && u.type === "worker" && u.working) {
+        if (u.owner === playerKey && (u.type === "worker" || UNIT_TYPES[u.type].canBuild) && u.working) {
           u.working.turns--;
           if (u.working.turns <= 0) {
             improvements[u.r + "," + u.c] = u.working.type;
