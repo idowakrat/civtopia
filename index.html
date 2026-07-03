@@ -157,6 +157,7 @@
   <div>
     <button id="foundCity" style="display:none; background:#66d9ff; color:#0a2a40;">Found City 🏛️</button>
     <button id="improve" style="display:none; background:#8fdf6f; color:#12300a;">Build 🛠️</button>
+    <button id="buildRoad" style="display:none; background:#d8ae7a; color:#3a2510;">Build Road 🛤️</button>
     <button id="endTurn">End Turn ⏭️</button>
   </div>
   <div id="cityPanel" style="display:none"></div>
@@ -457,6 +458,7 @@
       camp:       { name: "Camp 🪵",       p: 1 },
     };
     let improvements = {}; // "row,col" -> improvement key
+    let roads = new Set(); // tiles with a road — units zoom along them at half cost!
 
     function improvementFor(r, c) {
       const res = resources[r + "," + c];
@@ -699,6 +701,27 @@
     function myCities() { return cities.filter(ct => ct.owner === playerKey); }
     function capitalOf(owner) { return cities.find(ct => ct.owner === owner) || null; }
 
+    // is this city linked to your capital by roads? (+2 gold, like Civ 5 trade routes!)
+    function cityConnected(city) {
+      const cap = capitalOf(playerKey);
+      if (!cap || city === cap) return false;
+      const target = city.r + "," + city.c;
+      const seen = new Set([cap.r + "," + cap.c]);
+      let frontier = [cap];
+      while (frontier.length) {
+        const cur = frontier.pop();
+        for (const n of neighbors(cur.r, cur.c)) {
+          const key = n.r + "," + n.c;
+          if (seen.has(key)) continue;
+          if (key === target) return true;
+          if (!roads.has(key)) continue;
+          seen.add(key);
+          frontier.push(n);
+        }
+      }
+      return false;
+    }
+
     function territoryOf(city) {
       return [{ r: city.r, c: city.c }, ...neighbors(city.r, city.c)];
     }
@@ -722,53 +745,61 @@
       return map[r][c] === "coast" && !!UNIT_TYPES[unit.type].amphibious;
     }
 
+    // walking road-to-road only costs HALF a move point!
+    function stepCost(fromR, fromC, toR, toC) {
+      return (roads.has(fromR + "," + fromC) && roads.has(toR + "," + toC)) ? 0.5 : 1;
+    }
+
     function reachableTiles(unit) {
       if (!unit || unit.moves <= 0) return [];
+      const bestLeft = { [unit.r + "," + unit.c]: unit.moves };
       let frontier = [{ r: unit.r, c: unit.c, left: unit.moves }];
-      let seen = { [unit.r + "," + unit.c]: true };
-      let result = [];
+      const found = new Set();
+      const result = [];
       while (frontier.length) {
         const cur = frontier.pop();
-        if (cur.left === 0) continue;
         for (const n of neighbors(cur.r, cur.c)) {
           const key = n.r + "," + n.c;
-          if (seen[key] || !canWalk(unit, n.r, n.c)) continue;
+          if (!canWalk(unit, n.r, n.c)) continue;
           const town = cityAt(n.r, n.c);
           if (town && town.owner !== unit.owner) continue; // can't enter enemy cities
-          seen[key] = true;
-          if (!unitAt(n.r, n.c)) result.push(n); // can't stand on a friend
-          frontier.push({ r: n.r, c: n.c, left: cur.left - 1 });
+          const left = cur.left - stepCost(cur.r, cur.c, n.r, n.c);
+          if (left < 0 || left <= (bestLeft[key] ?? -1)) continue;
+          bestLeft[key] = left;
+          frontier.push({ r: n.r, c: n.c, left });
+          if (!unitAt(n.r, n.c) && !found.has(key)) { found.add(key); result.push(n); } // can't stand on a friend
         }
       }
       return result;
     }
 
-    // find the exact tile-by-tile path a unit will walk
+    // find the exact tile-by-tile path a unit will walk (roads make it cheaper!)
+    // returns { path, cost } or null
     function pathTo(unit, target) {
       const startKey = unit.r + "," + unit.c;
+      const bestLeft = { [startKey]: unit.moves };
       const parent = { [startKey]: null };
-      let frontier = [{ r: unit.r, c: unit.c }];
-      let depth = 0;
-      while (frontier.length && depth < unit.moves) {
-        depth++;
-        const next = [];
-        for (const cur of frontier) {
-          for (const n of neighbors(cur.r, cur.c)) {
-            const key = n.r + "," + n.c;
-            if (key in parent || !canWalk(unit, n.r, n.c)) continue;
-            const town = cityAt(n.r, n.c);
-            if (town && town.owner !== unit.owner) continue;
-            parent[key] = cur;
-            next.push(n);
-          }
+      let frontier = [{ r: unit.r, c: unit.c, left: unit.moves }];
+      while (frontier.length) {
+        const cur = frontier.pop();
+        for (const n of neighbors(cur.r, cur.c)) {
+          const key = n.r + "," + n.c;
+          if (!canWalk(unit, n.r, n.c)) continue;
+          const town = cityAt(n.r, n.c);
+          if (town && town.owner !== unit.owner) continue;
+          const left = cur.left - stepCost(cur.r, cur.c, n.r, n.c);
+          if (left < 0 || left <= (bestLeft[key] ?? -1)) continue;
+          bestLeft[key] = left;
+          parent[key] = cur;
+          frontier.push({ r: n.r, c: n.c, left });
         }
-        frontier = next;
       }
-      if (!((target.r + "," + target.c) in parent) || unitAt(target.r, target.c)) return null;
+      const tKey = target.r + "," + target.c;
+      if (!(tKey in parent) || unitAt(target.r, target.c)) return null;
       const path = [];
       let cur = { r: target.r, c: target.c };
       while (cur) { path.unshift({ r: cur.r, c: cur.c }); cur = parent[cur.r + "," + cur.c]; }
-      return path;
+      return { path, cost: unit.moves - bestLeft[tKey] };
     }
 
     // ===== COMBAT! =====
@@ -1021,6 +1052,7 @@
       // social policies (only for you, the player)
       if (owner === playerKey) {
         const isCap = capitalOf(owner) === city;
+        if (!isCap && cityConnected(city)) y.g += 2; // road to the capital = trade!
         if (adopted.has("tradition") && isCap) y.cu += 3;
         if (adopted.has("landed_elite") && isCap) y.f += 2;
         if (adopted.has("liberty")) y.cu += 1;
@@ -1678,6 +1710,25 @@
         // a soft sunlight glow from the top-left, like Civ 6's lighting
         drawHex(p.x - 1.5, top - 2.5, HEX - 6, "rgba(255,255,240,0.09)", null, 0);
         drawDecorations(p.x, top, t);
+        // roads: dusty paths connecting to neighboring roads and cities
+        if (roads.has(r + "," + c)) {
+          ctx.strokeStyle = "#a97e4f"; ctx.lineWidth = 5; ctx.lineCap = "round";
+          let linked = false;
+          for (const n of neighbors(r, c)) {
+            if (!roads.has(n.r + "," + n.c) && !cityAt(n.r, n.c)) continue;
+            linked = true;
+            const np = hexCenter(n.r, n.c);
+            const ntop = np.y - liftAt(n.r, n.c);
+            ctx.beginPath();
+            ctx.moveTo(p.x, top);
+            ctx.lineTo((p.x + np.x) / 2, (top + ntop) / 2);
+            ctx.stroke();
+          }
+          if (!linked) { // a lonely road stub
+            ctx.fillStyle = "#a97e4f";
+            ctx.beginPath(); ctx.arc(p.x, top, 4, 0, Math.PI * 2); ctx.fill();
+          }
+        }
         // improvements built by workers
         const imp = improvements[r + "," + c];
         if (imp === "farm") {
@@ -1840,6 +1891,7 @@
     const info = document.getElementById("info");
     const foundBtn = document.getElementById("foundCity");
     const improveBtn = document.getElementById("improve");
+    const roadBtn = document.getElementById("buildRoad");
     const cityPanel = document.getElementById("cityPanel");
     const techBtn = document.getElementById("techBtn");
     const policyBtn = document.getElementById("policyBtn");
@@ -1882,6 +1934,11 @@
       if (canImprove) {
         improveBtn.textContent = "Build " + IMPROVEMENTS[improvementFor(selected.r, selected.c)].name;
       }
+      // roads can be built ANYWHERE on land — connect your cities!
+      const canRoad = selected && (selected.type === "worker" || UNIT_TYPES[selected.type].canBuild) && !selected.working &&
+        TERRAIN[map[selected.r][selected.c]].walk &&
+        !roads.has(selected.r + "," + selected.c);
+      roadBtn.style.display = canRoad ? "" : "none";
     }
 
     function renderCityPanel() {
@@ -2093,18 +2150,18 @@
         // march next to the target first
         let best = null;
         for (const n of neighbors(targetR, targetC)) {
-          if (!TERRAIN[map[n.r][n.c]].walk || unitAt(n.r, n.c)) continue;
+          if (!canWalk(unit, n.r, n.c) || unitAt(n.r, n.c)) continue;
           const blockTown = cityAt(n.r, n.c);
           if (blockTown && blockTown.owner !== unit.owner) continue;
-          const p = pathTo(unit, n);
-          if (p && p.length - 1 < unit.moves && (!best || p.length < best.length)) best = p;
+          const route = pathTo(unit, n);
+          if (route && route.cost < unit.moves && (!best || route.cost < best.cost)) best = route;
         }
         if (!best) { info.textContent = "Too far to attack this turn — get closer!"; return; }
-        unit.moves -= best.length - 1;
-        const end = best[best.length - 1];
+        unit.moves -= best.cost;
+        const end = best.path[best.path.length - 1];
         unit.r = end.r; unit.c = end.c;
-        unit.anim = { path: best, seg: 0, t: 0 };
-        for (const step of best) reveal(step.r, step.c, 2);
+        unit.anim = { path: best.path, seg: 0, t: 0 };
+        for (const step of best.path) reveal(step.r, step.c, 2);
       }
       if (unit.moves <= 0) { info.textContent = "No moves left to attack!"; return; }
       unit.moves = 0; // attacking takes everything you've got
@@ -2164,13 +2221,13 @@
           info.textContent = "That's " + town.name + ", a city of " + CIVS[town.owner].name + "!";
         }
       } else if (selected) {
-        const path = pathTo(selected, hex);
-        if (path) {
-          selected.moves -= path.length - 1; // one move point per step walked
+        const route = pathTo(selected, hex);
+        if (route) {
+          selected.moves -= route.cost; // roads make steps cheaper!
           selected.working = null; // a moving worker abandons the job
           selected.r = hex.r; selected.c = hex.c;
-          selected.anim = { path, seg: 0, t: 0 }; // walk it, don't teleport!
-          for (const step of path) reveal(step.r, step.c, 2); // see everything along the way
+          selected.anim = { path: route.path, seg: 0, t: 0 }; // walk it, don't teleport!
+          for (const step of route.path) reveal(step.r, step.c, 2); // see everything along the way
           raidCamp(hex.r, hex.c, true); // stomping a barbarian camp destroys it!
           checkRuin(hex.r, hex.c); // and ruins hold treasure!
           info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
@@ -2305,6 +2362,18 @@
       draw();
     });
 
+    roadBtn.addEventListener("click", () => {
+      if (!selected || selected.working) return;
+      if (selected.type !== "worker" && !UNIT_TYPES[selected.type].canBuild) return;
+      const key = selected.r + "," + selected.c;
+      if (roads.has(key) || !TERRAIN[map[selected.r][selected.c]].walk) return;
+      selected.working = { type: "road", turns: adopted.has("citizenship") ? 1 : 2 };
+      info.textContent = "🛤️ Building a Road — ready in " + selected.working.turns + " turn" + (selected.working.turns > 1 ? "s" : "") + "! Roads make units faster and connect cities.";
+      selected = null;
+      updateButtons();
+      draw();
+    });
+
     function showMessages() {
       if (messages.length) {
         info.textContent = messages.slice(-3).join("  •  ");
@@ -2318,8 +2387,13 @@
         if (u.owner === playerKey && (u.type === "worker" || UNIT_TYPES[u.type].canBuild) && u.working) {
           u.working.turns--;
           if (u.working.turns <= 0) {
-            improvements[u.r + "," + u.c] = u.working.type;
-            say("🛠️ Your worker finished a " + IMPROVEMENTS[u.working.type].name + "!");
+            if (u.working.type === "road") {
+              roads.add(u.r + "," + u.c);
+              say("🛤️ Your worker finished a Road!");
+            } else {
+              improvements[u.r + "," + u.c] = u.working.type;
+              say("🛠️ Your worker finished a " + IMPROVEMENTS[u.working.type].name + "!");
+            }
             u.working = null;
             terrainDirty = true;
           }
