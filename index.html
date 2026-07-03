@@ -164,8 +164,8 @@
   <script>
     // ===== THE MAP =====
     // The map is made of hexagons (like Civilization!).
-    const COLS = 34;
-    const ROWS = 24;
+    const COLS = 40;
+    const ROWS = 28;
     const HEX = 32; // size of one hexagon
 
     // Bright, juicy colors like Civilization 6!
@@ -364,7 +364,7 @@
         primary: "#2e9e4f", secondary: "#ffffff",
         shirt: "#ece8dc", skin: "#ffd9a6", hat: "#2e2e2e", head: "human",
         moveBonus: 0,
-        ability: "WORKS NOW: social policies cost 25% less",
+        ability: "WORKS NOW: a FREE social policy every time you enter a new era!",
         cityNames: ["Bo Town", "Dojo City", "Monk Peak", "Kickford", "Silent Fist", "Waxon Falls"],
       },
       pigmen: {
@@ -589,28 +589,47 @@
     const POLICY_TREES = {
       tradition: { name: "Tradition 🏛️", opener: "+3 culture in your capital", policies: {
         aristocracy:  { name: "Aristocracy",  desc: "+15% production when building wonders" },
-        landed_elite: { name: "Landed Elite", desc: "+2 food in your capital" },
+        oligarchy:    { name: "Oligarchy",    desc: "+25% city strength when defending" },
         legalism:     { name: "Legalism",     desc: "a FREE Monument in your capital" },
+        landed_elite: { name: "Landed Elite", desc: "+2 food in your capital" },
+        monarchy:     { name: "Monarchy",     desc: "+1 gold & +1 culture per 2 people in your capital" },
       }},
       liberty: { name: "Liberty 🗽", opener: "+1 culture in every city", policies: {
         republic:        { name: "Republic",        desc: "+1 production in every city" },
+        citizenship:     { name: "Citizenship",     desc: "Workers build improvements 1 turn faster" },
         collective_rule: { name: "Collective Rule", desc: "Settlers are built 50% faster" },
+        representation:  { name: "Representation",  desc: "future policies cost 10% less" },
         meritocracy:     { name: "Meritocracy",     desc: "+1 gold in every city" },
       }},
       honor: { name: "Honor 🎖️", opener: "Warriors get +1 movement", policies: {
         warrior_code:       { name: "Warrior Code",       desc: "+20% production when building Warriors" },
         discipline:         { name: "Discipline",         desc: "+1 capital culture for every Warrior you own" },
         military_tradition: { name: "Military Tradition", desc: "Warriors get +1 movement (again!)" },
+        military_caste:     { name: "Military Caste",     desc: "+2 culture in each city with a unit standing guard" },
+        professional_army:  { name: "Professional Army",  desc: "your units heal +10 extra every turn" },
+      }},
+      piety: { name: "Piety 🙏", opener: "+2 culture from every Shrine", policies: {
+        organized_religion: { name: "Organized Religion", desc: "+1 food in cities with a Shrine" },
+        theocracy:          { name: "Theocracy",          desc: "+2 gold in cities with a Shrine" },
+        reformation:        { name: "Reformation",        desc: "+5 culture in your capital" },
+      }},
+      patronage: { name: "Patronage 🤝", opener: "gifts from city-states are 50% bigger", policies: {
+        philanthropy:  { name: "Philanthropy",  desc: "+25 gold right now" },
+        consulates:    { name: "Consulates",    desc: "+1 culture per friendly city-state" },
+        scholasticism: { name: "Scholasticism", desc: "+1 science per friendly city-state" },
       }},
       commerce: { name: "Commerce 💰", opener: "+25% gold in your capital", policies: {
-        trade_unions:  { name: "Trade Unions",  desc: "+2 gold in every city" },
-        mercantilism:  { name: "Mercantilism",  desc: "+1 gold from every worked luxury" },
-        protectionism: { name: "Protectionism", desc: "+1 food from every worked luxury" },
+        trade_unions:   { name: "Trade Unions",   desc: "+2 gold in every city" },
+        mercantilism:   { name: "Mercantilism",   desc: "+1 gold from every worked luxury" },
+        mercenary_army: { name: "Mercenary Army", desc: "Warriors are built 25% faster" },
+        protectionism:  { name: "Protectionism",  desc: "+1 food from every worked luxury" },
       }},
       rationalism: { name: "Rationalism 🔬", opener: "+10% science everywhere", policies: {
-        secularism:   { name: "Secularism",   desc: "+2 science per specialist" },
-        free_thought: { name: "Free Thought", desc: "+2 science in every city" },
-        sovereignty:  { name: "Sovereignty",  desc: "+1 science from every worked luxury" },
+        secularism:            { name: "Secularism",            desc: "+2 science per specialist" },
+        humanism:              { name: "Humanism",              desc: "+2 Great Scientist points every turn" },
+        free_thought:          { name: "Free Thought",          desc: "+2 science in every city" },
+        sovereignty:           { name: "Sovereignty",           desc: "+1 science from every worked luxury" },
+        scientific_revolution: { name: "Scientific Revolution", desc: "+50 science right now" },
       }},
     };
     const POLICY_COSTS = [15, 35, 60, 90, 125, 165, 210, 260, 315, 375,
@@ -984,6 +1003,15 @@
         if (adopted.has("discipline") && isCap) {
           y.cu += units.filter(u => u.owner === owner && u.type === "warrior").length;
         }
+        if (adopted.has("monarchy") && isCap) {
+          y.g += Math.floor(city.pop / 2); y.cu += Math.floor(city.pop / 2);
+        }
+        const guard = unitAt(city.r, city.c);
+        if (adopted.has("military_caste") && guard && guard.owner === owner) y.cu += 2;
+        if (adopted.has("piety") && city.buildings.includes("shrine")) y.cu += 2;
+        if (adopted.has("organized_religion") && city.buildings.includes("shrine")) y.f += 1;
+        if (adopted.has("theocracy") && city.buildings.includes("shrine")) y.g += 2;
+        if (adopted.has("reformation") && isCap) y.cu += 5;
         if (adopted.has("commerce") && isCap) y.g = Math.round(y.g * 1.25);
         if (adopted.has("rationalism")) y.s = Math.round(y.s * 1.1);
       }
@@ -1042,9 +1070,10 @@
       if (city.producing) {
         let mult = 1;
         if (city.owner === playerKey) {
-          if (BUILDINGS[city.producing] && BUILDINGS[city.producing].wonder && adopted.has("aristocracy")) mult = 1.15;
-          if (city.producing === "warrior" && adopted.has("warrior_code")) mult = 1.2;
-          if (city.producing === "settler" && adopted.has("collective_rule")) mult = 1.5;
+          if (BUILDINGS[city.producing] && BUILDINGS[city.producing].wonder && adopted.has("aristocracy")) mult *= 1.15;
+          if (city.producing === "warrior" && adopted.has("warrior_code")) mult *= 1.2;
+          if (city.producing === "warrior" && adopted.has("mercenary_army")) mult *= 1.25;
+          if (city.producing === "settler" && adopted.has("collective_rule")) mult *= 1.5;
         }
         city.prodBucket += y.p * speed * mult;
         const cost = prodCost(city.producing);
@@ -1103,9 +1132,10 @@
         !researched.has(k) && TECHS[k].req.every(rq => researched.has(rq)));
     }
     function nextPolicyCost() {
-      if (freePolicies > 0) return 0; // the Oracle pays for this one
-      const base = POLICY_COSTS[Math.min(adopted.size, POLICY_COSTS.length - 1)];
-      return playerKey === "boland" ? Math.round(base * 0.75) : base; // Bolun's discount!
+      if (freePolicies > 0) return 0; // a free one is waiting!
+      let base = POLICY_COSTS[Math.min(adopted.size, POLICY_COSTS.length - 1)];
+      if (adopted.has("representation")) base *= 0.9;
+      return Math.round(base);
     }
     function availablePolicies() {
       const avail = [];
@@ -1818,6 +1848,8 @@
         const cap = capitalOf(playerKey);
         if (cap && !cap.buildings.includes("monument")) cap.buildings.push("monument");
       }
+      if (key === "philanthropy") gold += 25;
+      if (key === "scientific_revolution") scienceBucket += 50;
       document.getElementById("policyPanel").style.display = "none";
       info.textContent = "🎭 You adopted " + name + "!";
       updateTopbar();
@@ -2135,6 +2167,16 @@
         say("🔬 RESEARCHED: " + TECHS[currentTech].name + " — " + TECHS[currentTech].gives + "!");
         currentTech = null;
       }
+      // 2.5 did we enter a new era?
+      const era = eraOf();
+      if (era > currentEra) {
+        currentEra = era;
+        say("🏰 Your civilization has entered the " + ERA_NAMES[era] + " Era!");
+        if (playerKey === "boland") {
+          freePolicies++;
+          say("🥋 Bolun meditates on the new age... and grants you a FREE social policy!");
+        }
+      }
       // 3. everyone gets their moves back (and rests their wounds)
       turn++;
       selected = null;
@@ -2145,6 +2187,7 @@
         if (u.hp < 100) {
           let heal = myLand.has(u.r + "," + u.c) ? 20 : 10; // resting at home is best
           if (u.darkHeal && myLand.has(u.r + "," + u.c)) heal *= 2; // Dark Matter magic!
+          if (adopted.has("professional_army")) heal += 10;
           u.hp = Math.min(100, u.hp + heal);
         }
       }
@@ -2181,7 +2224,7 @@
         [keys[i], keys[j]] = [keys[j], keys[i]];
       }
       const start = units[0]; // your settler
-      for (const ai of keys.slice(0, 2)) {
+      for (const ai of keys.slice(0, 5)) { // FIVE rivals — the whole world is playing!
         // give them a start far away from you (and from each other)
         let best = null, bestScore = -1;
         for (let tries = 0; tries < 400; tries++) {
