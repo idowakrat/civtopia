@@ -133,6 +133,11 @@
     <div id="techList" class="cardList"></div>
     <button id="techLater">Decide later</button>
   </div>
+  <div id="diploPanel" class="overlay" style="display:none">
+    <h2>🤝 Diplomacy</h2>
+    <div id="diploList" class="cardList"></div>
+    <button id="diploClose">Close</button>
+  </div>
   <div id="policyPanel" class="overlay" style="display:none">
     <h2>🎭 Pick a Social Policy!</h2>
     <div id="policyCost" style="color:#b9c4e8; margin-bottom:8px"></div>
@@ -152,6 +157,7 @@
     <span id="statTech"></span>
     <button id="techBtn" style="display:none">🔬 Research</button>
     <button id="policyBtn" style="display:none">🎭 New Policy!</button>
+    <button id="diploBtn" style="display:none">🤝 Diplomacy</button>
   </div>
   <div id="info">Click your settler, move him somewhere nice, then press Found City!</div>
   <canvas id="game" width="1000" height="520"></canvas>
@@ -824,12 +830,21 @@
       return { path, cost: unit.moves - bestLeft[tKey] };
     }
 
-    // ===== COMBAT! =====
+    // ===== COMBAT & DIPLOMACY =====
     const wars = new Set(["barb"]); // barbarians are ALWAYS angry
+    const diplo = {}; // how each leader feels about you
+    function diploOf(o) {
+      if (!diplo[o]) diplo[o] = { attitude: 0, warSince: null };
+      return diplo[o];
+    }
 
     function declareWar(owner) {
       if (owner === playerKey || owner === "barb" || wars.has(owner)) return;
       wars.add(owner);
+      diploOf(owner).warSince = turn;
+      diploOf(owner).attitude -= 3;
+      // everyone else hears about it and trusts you a little less
+      for (const o of met) if (!CIVS[o].cityState && o !== owner) diploOf(o).attitude -= 1;
       say("⚔️⚔️⚔️ WAR! You are now at war with " + CIVS[owner].name + "!");
     }
 
@@ -1948,6 +1963,8 @@
         techSpan.textContent = "";
       }
       techBtn.style.display = (!currentTech && availableTechs().length && myCities().length) ? "" : "none";
+      document.getElementById("diploBtn").style.display =
+        [...met].some(o => !CIVS[o].cityState) || [...met].some(o => CIVS[o].cityState) ? "" : "none";
       policyBtn.style.display = (cultureBucket >= nextPolicyCost() && availablePolicies().length) ? "" : "none";
     }
 
@@ -2109,6 +2126,84 @@
       draw();
     }
 
+    // the diplomacy screen: every leader you've met, with their mood
+    function renderDiploPanel() {
+      const list = document.getElementById("diploList");
+      list.innerHTML = "";
+      for (const o of [...met].filter(k => !CIVS[k].cityState)) {
+        const d = diploOf(o);
+        const card = document.createElement("div");
+        card.className = "civCard";
+        const face = document.createElement("canvas");
+        face.width = 196; face.height = 74;
+        face.className = "portrait";
+        drawLeader(face.getContext("2d"), o, 196, 74);
+        card.appendChild(face);
+        const mood = d.attitude >= 2 ? "😊 Friendly" : d.attitude <= -2 ? "😠 Angry" : "😐 Neutral";
+        const status = wars.has(o) ? "⚔️ AT WAR" : "🕊️ At peace";
+        const infoDiv = document.createElement("div");
+        infoDiv.innerHTML = '<div class="civName">' + CIVS[o].emoji + " " + CIVS[o].name + "</div>" +
+          '<div class="leader">' + CIVS[o].leader + "</div>" +
+          '<div class="ability">' + mood + " &nbsp;•&nbsp; " + status + "</div>";
+        card.appendChild(infoDiv);
+        const giftBtn = document.createElement("button");
+        giftBtn.textContent = "🎁 Send 25💰 gift";
+        giftBtn.addEventListener("click", () => {
+          if (gold < 25) { document.querySelector("#diploPanel h2").textContent = "🤝 Diplomacy — not enough gold for a gift!"; return; }
+          gold -= 25;
+          d.attitude += 1;
+          document.querySelector("#diploPanel h2").textContent = "🤝 " + CIVS[o].leader + " loves the gift!";
+          updateTopbar();
+          renderDiploPanel();
+        });
+        card.appendChild(giftBtn);
+        const warBtn = document.createElement("button");
+        if (wars.has(o)) {
+          warBtn.textContent = "🕊️ Make Peace";
+          warBtn.addEventListener("click", () => {
+            if (turn - (d.warSince ?? turn) < 3) {
+              document.querySelector("#diploPanel h2").textContent = "🤝 " + CIVS[o].leader + " is still furious — wait a few turns!";
+              return;
+            }
+            wars.delete(o);
+            d.warSince = null;
+            d.attitude += 1;
+            document.querySelector("#diploPanel h2").textContent = "🕊️ Peace with " + CIVS[o].name + "!";
+            renderDiploPanel();
+          });
+        } else {
+          warBtn.textContent = "⚔️ Declare War";
+          warBtn.style.background = "#d46a5a";
+          warBtn.addEventListener("click", () => {
+            declareWar(o);
+            showMessages();
+            renderDiploPanel();
+          });
+        }
+        card.appendChild(warBtn);
+        list.appendChild(card);
+      }
+      // the little city-states you know
+      for (const o of [...met].filter(k => CIVS[k].cityState)) {
+        const alive = cities.some(ct => ct.owner === o);
+        const kind = { culture: "🎭 culture", gold: "💰 gold", food: "🍞 food for your capital",
+                       production: "🔨 production for your capital" }[CIVS[o].cityState];
+        const card = document.createElement("div");
+        card.className = "civCard";
+        card.innerHTML = '<div class="civName">' + CIVS[o].emoji + " " + CIVS[o].name + " (city-state)</div>" +
+          '<div class="ability">' + (alive ? "Sends you " + kind + " every turn" : "😢 conquered — sends nothing") + "</div>";
+        list.appendChild(card);
+      }
+      document.getElementById("diploPanel").style.display = "flex";
+    }
+    document.getElementById("diploBtn").addEventListener("click", () => {
+      document.querySelector("#diploPanel h2").textContent = "🤝 Diplomacy";
+      renderDiploPanel();
+    });
+    document.getElementById("diploClose").addEventListener("click", () => {
+      document.getElementById("diploPanel").style.display = "none";
+    });
+
     techBtn.addEventListener("click", renderTechPanel);
     policyBtn.addEventListener("click", renderPolicyPanel);
     document.getElementById("techLater").addEventListener("click", () => {
@@ -2212,8 +2307,13 @@
         else if (result.attDead) say("💀 Your warrior fell in battle!");
         else say("⚔️ Clash! Your unit: " + unit.hp + " HP — theirs: " + defUnit.hp + " HP");
       } else {
+        const prevOwner = town.owner;
         const result = battleCity(unit, town);
-        if (result.captured) say("🏆 YOU CAPTURED " + town.name.toUpperCase() + "!!!");
+        if (result.captured) {
+          say("🏆 YOU CAPTURED " + town.name.toUpperCase() + "!!!");
+          diploOf(prevOwner).attitude -= 3; // they will NOT forget this
+          for (const o of met) if (!CIVS[o].cityState && o !== prevOwner) diploOf(o).attitude -= 1;
+        }
         else if (result.attDead) say("💀 Your warrior fell attacking " + town.name + "!");
         else say("💥 You attacked " + town.name + " — city at " + Math.max(0, town.hp) + " HP");
       }
@@ -2521,6 +2621,15 @@
       aiTurn();
       barbarianTurn();
       checkMeetings();
+      // angry leaders might declare war on YOU
+      for (const o of met) {
+        if (CIVS[o].cityState || wars.has(o)) continue;
+        if (diploOf(o).attitude <= -4 && Math.random() < 0.15) {
+          wars.add(o);
+          diploOf(o).warSince = turn;
+          say("⚔️ " + CIVS[o].name + " DECLARES WAR on you! " + CIVS[o].leader + " has had enough!");
+        }
+      }
       say("Turn " + turn + " — your move!");
       showMessages();
       updateButtons();
