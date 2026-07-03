@@ -147,6 +147,7 @@
     <span id="statSci">🔬 +0</span>
     <span id="statCul">🎭 0</span>
     <span id="statGold">💰 0</span>
+    <span id="statHappy">😊 +9</span>
     <span id="statGP" style="display:none"></span>
     <span id="statTech"></span>
     <button id="techBtn" style="display:none">🔬 Research</button>
@@ -549,15 +550,15 @@
       library:  { name: "Library 📚", cost: 45, tech: "writing", effect: { s: 3 } },
       workshop: { name: "Workshop 🔨", cost: 65, tech: "engineering", effect: { p: 2 } },
       market:    { name: "Market 🛒",     cost: 55, tech: "currency", effect: { g: 3 } },
-      colosseum: { name: "Colosseum 🏟️", cost: 55, tech: "construction", effect: { cu: 2 } },
+      colosseum: { name: "Colosseum 🏟️", cost: 55, tech: "construction", effect: { cu: 1, happy: 2 } },
       university: { name: "University 🎓", cost: 80, tech: "education", effect: { s: 4 }, special: "+1 Great Scientist point each turn" },
       castle:    { name: "Castle 🏰",     cost: 80, tech: "chivalry", effect: {}, special: "+5 city strength when defending" },
       forge:     { name: "Forge 🔥",      cost: 70, tech: "metal_casting", effect: { p: 2 } },
-      // Adam & Meir's custom wonders
+      // Adam & Meir's custom wonders (with their TRUE slide powers!)
       woodhenge: { name: "Woodhenge 🪵", cost: 90, tech: "mining", wonder: true, needs: ["shrine", "library"],
-                   effect: { cu: 3 }, special: "Doubles what luxury resources give ALL your cities!" },
+                   effect: { happy: 3 }, special: "Doubles what luxury resources give ALL your cities, +3 happiness!" },
       array:    { name: "Array of Ginglewhopperian Gods 🗽", cost: 75, tech: "masonry", wonder: true,
-                  effect: { cu: 5 }, special: "So beautiful. So gingly." },
+                  effect: { cu: 5, happy: 5 }, special: "+5 happiness and +2 Great Engineer points. So gingly." },
       // the real Civ 5 ancient wonders!
       stonehenge:      { name: "Stonehenge 🪨",          cost: 65, tech: "calendar", wonder: true, effect: { cu: 4 } },
       great_library:   { name: "The Great Library 📖",   cost: 75, tech: "writing", wonder: true, effect: { s: 3 },
@@ -672,6 +673,27 @@
     const researched = new Set();
     // Great People points — fill the bar, a Great Person appears!
     let gsPoints = 0, gePoints = 0, gsNeed = 50, geNeed = 50;
+    let lastHappiness = 9; // updated every turn; below 0 = angry empire!
+
+    // ===== HAPPINESS (like Civ 5!) =====
+    // Base +9. Each DIFFERENT luxury you work: +4. Happy buildings help too.
+    // Every city costs 3 and every citizen costs 1. Go below zero and cities STOP growing!
+    function empireHappiness() {
+      let h = 9;
+      const luxTypes = new Set();
+      for (const city of myCities()) {
+        for (const t of workedTiles(city)) {
+          const res = resources[t.r + "," + t.c];
+          if (res && RESOURCES[res].luxury) luxTypes.add(res);
+        }
+        for (const b of city.buildings) {
+          h += bInfo(b, city.owner).effect.happy || 0;
+        }
+        h -= 3 + city.pop;
+      }
+      h += luxTypes.size * 4;
+      return h;
+    }
     const adopted = new Set();  // social policies
     const met = new Set();      // civs we've met (for AI later!)
 
@@ -1127,8 +1149,10 @@
       // growth: people eat 2 food each, leftovers fill the growth bar.
       // Civ 5 rule: a city building a Settler is too busy packing to grow!
       const surplus = y.f - city.pop * 2;
+      // an UNHAPPY empire's cities refuse to grow (but can still starve!)
+      const unhappy = city.owner === playerKey && lastHappiness < 0;
       if (city.producing !== "settler") {
-        city.foodBucket += surplus * speed;
+        city.foodBucket += (unhappy && surplus > 0) ? 0 : surplus * speed;
         if (city.foodBucket >= growthNeeded(city.pop)) {
           city.pop++;
           city.foodBucket = 0;
@@ -1907,6 +1931,9 @@
       document.getElementById("statSci").textContent = "🔬 +" + sci;
       document.getElementById("statCul").textContent = "🎭 " + cultureBucket + " (+" + cul + ")";
       document.getElementById("statGold").textContent = "💰 " + gold;
+      const happyNow = empireHappiness();
+      document.getElementById("statHappy").textContent =
+        (happyNow >= 0 ? "😊 +" : "😡 ") + happyNow;
       const gpSpan = document.getElementById("statGP");
       if (gsPoints > 0 || gePoints > 0 || playerKey === "ginglewhoppers") {
         gpSpan.style.display = "";
@@ -2398,6 +2425,14 @@
             terrainDirty = true;
           }
         }
+      }
+      // 0.5 how is everyone feeling?
+      const prevHappy = lastHappiness;
+      lastHappiness = empireHappiness();
+      if (lastHappiness < 0 && prevHappy >= 0) {
+        say("😡 Your empire is UNHAPPY! Cities stop growing — work more luxuries or build Colosseums!");
+      } else if (lastHappiness >= 0 && prevHappy < 0) {
+        say("😊 Your people are happy again! Cities can grow.");
       }
       // 1. your cities eat, grow, and build
       let sci = 0, cul = 0, gld = 0;
