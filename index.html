@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Our Game — Le Diggers!</title>
+  <title>Our Game — Empires!</title>
   <style>
     body {
       margin: 0;
@@ -14,12 +14,26 @@
       align-items: center;
       min-height: 100vh;
     }
-    h1 { font-size: 1.6em; margin: 10px 0 2px; }
+    h1 { font-size: 1.4em; margin: 8px 0 2px; }
+    #topbar {
+      background: #23234a;
+      border: 2px solid #4466aa;
+      border-radius: 8px;
+      padding: 5px 14px;
+      margin: 4px 0;
+      font-size: 0.95em;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    #topbar button { margin: 0; padding: 3px 10px; font-size: 0.9em; }
     #info {
-      margin: 4px 0 8px;
-      font-size: 1em;
+      margin: 4px 0 6px;
+      font-size: 0.95em;
       color: #ffd966;
       min-height: 1.2em;
+      max-width: 990px;
+      text-align: center;
     }
     canvas {
       background: #235a9c; /* deep sea around the map */
@@ -28,9 +42,9 @@
       cursor: pointer;
     }
     button {
-      margin: 10px;
-      font-size: 1.1em;
-      padding: 8px 20px;
+      margin: 8px 4px;
+      font-size: 1em;
+      padding: 7px 16px;
       border-radius: 8px;
       border: none;
       background: #ffb733;
@@ -39,8 +53,19 @@
       cursor: pointer;
     }
     button:hover { background: #ffd966; }
-    /* the choose-your-civilization screen */
-    #picker {
+    #cityPanel {
+      background: #23234a;
+      border: 2px solid #4466aa;
+      border-radius: 10px;
+      padding: 8px 14px;
+      margin: 6px;
+      max-width: 990px;
+      font-size: 0.9em;
+    }
+    #cityPanel button { font-size: 0.85em; padding: 5px 10px; margin: 4px; }
+    #cityPanel button:disabled { background: #666; color: #bbb; cursor: not-allowed; }
+    /* full-screen choosers (civ picker, tech tree, policies) */
+    .overlay {
       position: fixed;
       inset: 0;
       background: rgba(10, 10, 30, 0.94);
@@ -51,8 +76,8 @@
       z-index: 10;
       overflow: auto;
     }
-    #picker h2 { margin: 10px; font-size: 1.8em; }
-    #civList {
+    .overlay h2 { margin: 10px; font-size: 1.7em; }
+    .cardList {
       display: flex;
       flex-wrap: wrap;
       justify-content: center;
@@ -73,29 +98,49 @@
       font-weight: normal;
     }
     .civCard:hover { background: #2f2f66; border-color: #ffd966; transform: scale(1.04); }
-    .civCard .civName { font-size: 1.15em; font-weight: bold; }
+    .civCard .civName { font-size: 1.1em; font-weight: bold; }
     .civCard .stripe { height: 8px; border-radius: 4px; margin: 6px 0; }
     .civCard .leader { color: #ffd966; }
     .civCard .ability { color: #b9c4e8; }
   </style>
 </head>
 <body>
-  <div id="picker">
+  <div id="picker" class="overlay">
     <h2>🌍 Choose Your Civilization!</h2>
-    <div id="civList"></div>
+    <div id="civList" class="cardList"></div>
   </div>
+  <div id="techPanel" class="overlay" style="display:none">
+    <h2>🔬 Choose What to Research!</h2>
+    <div id="techList" class="cardList"></div>
+    <button id="techLater">Decide later</button>
+  </div>
+  <div id="policyPanel" class="overlay" style="display:none">
+    <h2>🎭 Pick a Social Policy!</h2>
+    <div id="policyList" class="cardList"></div>
+    <button id="policyLater">Decide later</button>
+  </div>
+
   <h1 id="title">🌍 Our Game</h1>
+  <div id="topbar">
+    <span id="statTurn">Turn 1</span>
+    <span id="statSci">🔬 +0</span>
+    <span id="statCul">🎭 0</span>
+    <span id="statGold">💰 0</span>
+    <span id="statTech"></span>
+    <button id="techBtn" style="display:none">🔬 Research</button>
+    <button id="policyBtn" style="display:none">🎭 New Policy!</button>
+  </div>
   <div id="info">Click your settler, move him somewhere nice, then press Found City!</div>
   <canvas id="game" width="1000" height="520"></canvas>
   <div>
     <button id="foundCity" style="display:none; background:#66d9ff; color:#0a2a40;">Found City 🏛️</button>
     <button id="endTurn">End Turn ⏭️</button>
   </div>
+  <div id="cityPanel" style="display:none"></div>
 
   <script>
     // ===== THE MAP =====
     // The map is made of hexagons (like Civilization!).
-    // Each hex has a terrain type. Some you can walk on, some you can't.
     const COLS = 34;
     const ROWS = 24;
     const HEX = 32; // size of one hexagon
@@ -106,12 +151,18 @@
       coast:    { color: "#5fc4dd", walk: false, name: "Coast 🌊" },
       grass:    { color: "#82c95e", walk: true,  name: "Grassland 🌿" },
       plains:   { color: "#dcca77", walk: true,  name: "Plains 🌾" },
-      desert:   { color: "#f4dc9b", walk: true,  name: "Desert 🏜️ (Le Diggers love this!)" },
+      desert:   { color: "#f4dc9b", walk: true,  name: "Desert 🏜️" },
       forest:   { color: "#78bd57", walk: true,  name: "Forest 🌲" },
       mountain: { color: "#a5a3ae", walk: false, name: "Mountain ⛰️ (too steep!)" },
     };
 
-    // Build a random island-ish map
+    // what each tile FEEDS your city: f = food, p = production, g = gold
+    const TERRAIN_YIELDS = {
+      ocean: { f: 1 }, coast: { f: 1, g: 1 },
+      grass: { f: 2 }, plains: { f: 1, p: 1 },
+      desert: {}, forest: { f: 1, p: 1 }, mountain: {},
+    };
+
     let map = [];
     function makeMap() {
       // Step 1: random bumpiness numbers for every tile
@@ -140,7 +191,7 @@
       for (let r = 0; r < ROWS; r++) {
         map[r] = [];
         for (let c = 0; c < COLS; c++) {
-          const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c); // distance from map edge
+          const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c);
           const v = noise[r][c] - (edge === 0 ? 0.3 : edge === 1 ? 0.12 : 0);
           let t;
           if (v < 0.42) t = "ocean";
@@ -162,10 +213,9 @@
     }
 
     // ===== HEX MATH =====
-    // These turn a row+column into a pixel spot on screen (and back).
-    const W = Math.sqrt(3) * HEX;   // width of a hex
-    const H = HEX * 1.5;            // vertical distance between rows
-    const OX = 40, OY = 60;         // margin so the map isn't glued to the corner
+    const W = Math.sqrt(3) * HEX;
+    const H = HEX * 1.5;
+    const OX = 40, OY = 60;
 
     // The 3D tricks: SQUASH tilts the camera down a bit,
     // and LIFT raises land tiles up like chunky board-game pieces.
@@ -177,14 +227,13 @@
     }
     function liftAt(r, c) { return LIFT[map[r][c]]; }
 
-    // make a color darker (for the shaded sides of tiles)
     function shade(color, f) {
       const n = parseInt(color.slice(1), 16);
       const ch = (v) => Math.round(v * f);
       return "rgb(" + ch(n >> 16) + "," + ch((n >> 8) & 255) + "," + ch(n & 255) + ")";
     }
+
     function pixelToHex(x, y) {
-      // find the closest hex TOP FACE to where you clicked (tiles are lifted!)
       let best = null, bestDist = Infinity;
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
@@ -193,8 +242,8 @@
       }
       return bestDist < HEX * HEX ? best : null;
     }
+
     function neighbors(r, c) {
-      // the 6 hexes around a hex (different for even/odd rows)
       const even = [[-1,-1],[-1,0],[0,-1],[0,1],[1,-1],[1,0]];
       const odd  = [[-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]];
       return (r % 2 ? odd : even)
@@ -203,8 +252,6 @@
     }
 
     // ===== THE CAMERA =====
-    // The map is bigger than the screen now! The camera decides
-    // which part you see. Drag the map (or use arrow keys) to look around.
     const cam = { x: 0, y: 0 };
     const WORLD_W = OX * 2 + (COLS - 1) * W + W / 2 + W;
     const WORLD_H = OY * 2 + (ROWS - 1) * H * SQUASH + HEX * 2;
@@ -221,11 +268,8 @@
     }
 
     // ===== FOG OF WAR =====
-    // Tiles start hidden under parchment clouds. Your units light them up!
     const explored = new Set();
-
     function reveal(r, c, radius) {
-      // uncover every tile within `radius` steps
       const seen = new Set([r + "," + c]);
       explored.add(r + "," + c);
       let ring = [{ r, c }];
@@ -242,15 +286,13 @@
 
     // ===== THE CIVILIZATIONS =====
     // All seven civilizations from the presentation!
-    // "primary" and "secondary" are the border colors.
-    // Some abilities need parts of the game we haven't built yet — those say "soon".
     const CIVS = {
       diggers: {
         name: "Le Diggers", leader: "Edward", emoji: "⛏️",
         primary: "#2b6fd4", secondary: "#ffd21f",
         shirt: "#f28c1e", skin: "#ffd9a6", hat: "#ffcf1f", head: "human",
         moveBonus: 0,
-        ability: "Improved desert tiles +2 production (soon — when tiles get worked)",
+        ability: "WORKS NOW: desert tiles give +1 production (and +1 MORE with the Une Digged!)",
         cityNames: ["Digtown", "Shovelburg", "Le Big Dig", "Sandcastle", "Trench City", "Dustopolis", "Holeville", "Excavation Station"],
       },
       ginglewhoppers: {
@@ -258,7 +300,7 @@
         primary: "#2b6fd4", secondary: "#f28c1e",
         shirt: "#2b6fd4", skin: "#7fc25e", hat: "#b5651d", head: "human",
         moveBonus: 0,
-        ability: "+1 great engineer & scientist point per improved luxury (soon)",
+        ability: "WORKS NOW: +1 science for every luxury resource in your lands",
         cityNames: ["Ginglewhop City", "Whopperville", "Labtown", "Gadgetburg", "Fizzleton", "Beakerburg"],
       },
       boland: {
@@ -266,7 +308,7 @@
         primary: "#2e9e4f", secondary: "#ffffff",
         shirt: "#ece8dc", skin: "#ffd9a6", hat: "#2e2e2e", head: "human",
         moveBonus: 0,
-        ability: "A free social policy every new era (soon — when eras arrive)",
+        ability: "WORKS NOW: social policies cost 25% less",
         cityNames: ["Bo Town", "Dojo City", "Monk Peak", "Kickford", "Silent Fist", "Waxon Falls"],
       },
       pigmen: {
@@ -290,7 +332,7 @@
         primary: "#7a3fd4", secondary: "#ffd21f",
         shirt: "#7a3fd4", skin: "#ffd9a6", hat: "#ffd21f", head: "human",
         moveBonus: 0,
-        ability: "+6 culture in the capital, −1 per civ or city-state met (soon — when culture flows)",
+        ability: "WORKS NOW: +6 culture in the capital, −1 for every civilization you meet",
         cityNames: ["Adamopolis", "Greatville", "Purple Palace", "Awesome Falls", "Majesty Bay", "Humantown"],
       },
       skooter: {
@@ -302,16 +344,14 @@
         cityNames: ["Skoot City", "Helmet Heights", "Kickflip Bay", "Rolling Meadows", "Meirville", "Two Wheels"],
       },
     };
-    let playerCiv = null; // picked on the title screen
 
     // ===== LUXURY RESOURCES =====
-    // Adam and Meir's special resources, scattered around the world
     const RESOURCES = {
-      darkmatter: { name: "Dark Matter 🌌", desc: "+1 gold (and 2x healing for units born nearby, soon!)", color: "#8a4fd4" },
-      bobtonium:  { name: "Bobtonium 🔶",  desc: "+3 production, +1 gold", color: "#e07820" },
-      joetonium:  { name: "Joetonium 🟢",  desc: "+4 food, +1 gold", color: "#3fae4a" },
+      darkmatter: { name: "Dark Matter 🌌", yields: { g: 1 }, desc: "+1 gold", color: "#8a4fd4" },
+      bobtonium:  { name: "Bobtonium 🔶",  yields: { p: 3, g: 1 }, desc: "+3 production, +1 gold", color: "#e07820" },
+      joetonium:  { name: "Joetonium 🟢",  yields: { f: 4, g: 1 }, desc: "+4 food, +1 gold", color: "#3fae4a" },
     };
-    let resources = {}; // "row,col" -> resource key
+    let resources = {};
 
     function scatterResources() {
       resources = {};
@@ -329,43 +369,108 @@
       }
     }
 
-    // ===== UNITS AND CITIES =====
-    // Units: a settler (founds cities) and a scout (explores fast!)
-    let units = [];      // everyone on the map
-    let selected = null; // the unit you clicked on
-    let cities = [];
+    // ===== TECHNOLOGIES =====
+    // Research these with science 🔬 to unlock new buildings!
+    const TECHS = {
+      mining:      { name: "Mining ⛏️",      cost: 10, req: [],                     gives: "unlocks the Woodhenge wonder" },
+      pottery:     { name: "Pottery 🏺",     cost: 10, req: [],                     gives: "leads to Writing and Theology" },
+      writing:     { name: "Writing 📜",     cost: 15, req: ["pottery"],            gives: "unlocks the Library" },
+      masonry:     { name: "Masonry 🧱",     cost: 15, req: ["mining"],             gives: "unlocks the Array of Ginglewhopperian Gods" },
+      theology:    { name: "Theology ⛪",    cost: 20, req: ["pottery"],            gives: "unlocks the Shrine" },
+      engineering: { name: "Engineering ⚙️", cost: 25, req: ["mining", "writing"],  gives: "unlocks the Workshop" },
+    };
 
-    function makeUnit(type, r, c) {
-      // scouts are speedy — and Skooter Dudes make EVERYONE speedy
-      const maxMoves = (type === "scout" ? 3 : 2) + playerCiv.moveBonus;
-      return { type, r, c, moves: maxMoves, maxMoves };
+    // ===== BUILDINGS AND WONDERS =====
+    // yields: f food, p production, g gold, s science, cu culture
+    const BUILDINGS = {
+      monument: { name: "Monument 🗿", cost: 25, tech: null, effect: { cu: 2 } },
+      shrine:   { name: "Shrine ⛩️",  cost: 35, tech: "theology", effect: { f: 1, g: 1, cu: 3 } },
+      library:  { name: "Library 📚", cost: 40, tech: "writing", effect: { s: 3 } },
+      workshop: { name: "Workshop 🔨", cost: 45, tech: "engineering", effect: { p: 2 } },
+      woodhenge: { name: "Woodhenge 🪵", cost: 70, tech: "mining", wonder: true, needs: ["shrine", "library"],
+                   effect: { cu: 3 }, special: "Doubles what luxury resources give ALL your cities!" },
+      array:    { name: "Array of Ginglewhopperian Gods 🗽", cost: 60, tech: "masonry", wonder: true,
+                  effect: { cu: 5 }, special: "So beautiful. So gingly." },
+    };
+    // special versions from the presentation!
+    const REPLACEMENTS = {
+      ginglewhoppers: { monument: { name: "Divine Statue 🗿✨", effect: { cu: 3, f: 2 } } },
+      diggers: { workshop: { name: "Une Digged ⛏️🔨", effect: { p: 2 } } }, // + desert bonus below!
+    };
+    function bInfo(key, owner) {
+      const rep = REPLACEMENTS[owner] && REPLACEMENTS[owner][key];
+      return { name: rep ? rep.name : BUILDINGS[key].name, effect: rep ? rep.effect : BUILDINGS[key].effect };
+    }
+
+    const UNIT_TYPES = {
+      settler: { name: "Settler", cost: 30, icon: "🏠" },
+      scout:   { name: "Scout",   cost: 15, icon: "🔭" },
+      warrior: { name: "Warrior", cost: 20, icon: "⚔️" },
+    };
+
+    // ===== SOCIAL POLICIES =====
+    const POLICIES = {
+      tradition:   { name: "Tradition 🏛️",   desc: "+3 food in your capital" },
+      liberty:     { name: "Liberty 🗽",     desc: "+1 production in every city" },
+      honor:       { name: "Honor 🎖️",      desc: "+1 movement for all your units" },
+      patronage:   { name: "Patronage 💰",   desc: "+2 gold from every city" },
+      rationalism: { name: "Rationalism 🔬", desc: "+2 science from every city" },
+      aesthetics:  { name: "Aesthetics 🎨",  desc: "+3 culture every turn" },
+    };
+    const POLICY_COSTS = [15, 40, 80, 140, 220, 320];
+
+    // ===== GAME STATE =====
+    let playerKey = null;   // which civ YOU are
+    let units = [];
+    let cities = [];
+    let selected = null;     // selected unit
+    let selectedCity = null; // selected city
+    let turn = 1;
+    let gold = 0;
+    let scienceBucket = 0, lastScience = 0;
+    let cultureBucket = 0, lastCulture = 0;
+    let currentTech = null;
+    const researched = new Set();
+    const adopted = new Set();  // social policies
+    const met = new Set();      // civs we've met (for AI later!)
+
+    function makeUnit(type, r, c, owner) {
+      let maxMoves = (type === "scout" ? 3 : 2) + CIVS[owner].moveBonus;
+      if (owner === playerKey && adopted.has("honor")) maxMoves += 1;
+      return { type, r, c, owner, moves: maxMoves, maxMoves };
     }
 
     function placeSettlerOnLand() {
-      // start near the middle, on a walkable tile
       for (let tries = 0; tries < 500; tries++) {
-        const r = Math.floor(ROWS / 2 + (Math.random() - 0.5) * 4);
-        const c = Math.floor(COLS / 2 + (Math.random() - 0.5) * 6);
-        if (TERRAIN[map[r][c]].walk) { units.push(makeUnit("settler", r, c)); return; }
+        const r = Math.floor(ROWS / 2 + (Math.random() - 0.5) * 6);
+        const c = Math.floor(COLS / 2 + (Math.random() - 0.5) * 10);
+        if (TERRAIN[map[r][c]].walk) { units.push(makeUnit("settler", r, c, playerKey)); return; }
       }
     }
 
-    function unitAt(r, c) {
-      return units.find(u => u.r === r && u.c === c) || null;
-    }
+    function unitAt(r, c) { return units.find(u => u.r === r && u.c === c) || null; }
+    function cityAt(r, c) { return cities.find(ct => ct.r === r && ct.c === c) || null; }
+    function myCities() { return cities.filter(ct => ct.owner === playerKey); }
+    function capitalOf(owner) { return cities.find(ct => ct.owner === owner) || null; }
 
-    // every tile owned by a city: the city tile plus its 6 neighbors
-    function territorySet() {
+    function territoryOf(city) {
+      return [{ r: city.r, c: city.c }, ...neighbors(city.r, city.c)];
+    }
+    function territorySet(owner) {
       const set = new Set();
       for (const city of cities) {
-        set.add(city.r + "," + city.c);
-        for (const n of neighbors(city.r, city.c)) set.add(n.r + "," + n.c);
+        if (city.owner !== owner) continue;
+        for (const t of territoryOf(city)) set.add(t.r + "," + t.c);
       }
+      return set;
+    }
+    function allTerritory() {
+      const set = new Set();
+      for (const city of cities) for (const t of territoryOf(city)) set.add(t.r + "," + t.c);
       return set;
     }
 
     function reachableTiles(unit) {
-      // where can this unit go right now? (1 move point per step)
       if (!unit || unit.moves <= 0) return [];
       let frontier = [{ r: unit.r, c: unit.c, left: unit.moves }];
       let seen = { [unit.r + "," + unit.c]: true };
@@ -376,6 +481,8 @@
         for (const n of neighbors(cur.r, cur.c)) {
           const key = n.r + "," + n.c;
           if (seen[key] || !TERRAIN[map[n.r][n.c]].walk) continue;
+          const town = cityAt(n.r, n.c);
+          if (town && town.owner !== unit.owner) continue; // can't enter enemy cities
           seen[key] = true;
           if (!unitAt(n.r, n.c)) result.push(n); // can't stand on a friend
           frontier.push({ r: n.r, c: n.c, left: cur.left - 1 });
@@ -384,13 +491,135 @@
       return result;
     }
 
+    // ===== CITY MATH =====
+    // Adds up everything a city gets each turn.
+    function cityYields(city) {
+      const y = { f: 2, p: 2, g: 0, s: 0, cu: 1 };
+      const owner = city.owner;
+      const hasWoodhenge = cities.some(ct => ct.owner === owner && ct.buildings.includes("woodhenge"));
+      let luxCount = 0, desertCount = 0;
+      for (const t of territoryOf(city)) {
+        const ty = TERRAIN_YIELDS[map[t.r][t.c]] || {};
+        y.f += ty.f || 0; y.p += ty.p || 0; y.g += ty.g || 0;
+        if (map[t.r][t.c] === "desert") desertCount++;
+        const res = resources[t.r + "," + t.c];
+        if (res) {
+          luxCount++;
+          const mult = hasWoodhenge ? 2 : 1; // Woodhenge doubles luxuries!
+          const ry = RESOURCES[res].yields;
+          y.f += (ry.f || 0) * mult; y.p += (ry.p || 0) * mult; y.g += (ry.g || 0) * mult;
+        }
+      }
+      // civilization abilities!
+      if (owner === "diggers") y.p += desertCount;
+      if (owner === "diggers" && city.buildings.includes("workshop")) y.p += desertCount;
+      if (owner === "ginglewhoppers") y.s += luxCount;
+      if (owner === "humanity" && capitalOf(owner) === city) y.cu += Math.max(0, 6 - met.size);
+      // buildings
+      for (const b of city.buildings) {
+        const e = bInfo(b, owner).effect;
+        y.f += e.f || 0; y.p += e.p || 0; y.g += e.g || 0; y.s += e.s || 0; y.cu += e.cu || 0;
+      }
+      // people make science!
+      y.s += city.pop;
+      // social policies (only for you, the player)
+      if (owner === playerKey) {
+        if (adopted.has("tradition") && capitalOf(owner) === city) y.f += 3;
+        if (adopted.has("liberty")) y.p += 1;
+        if (adopted.has("patronage")) y.g += 2;
+        if (adopted.has("rationalism")) y.s += 2;
+        if (adopted.has("aesthetics") && capitalOf(owner) === city) y.cu += 3;
+      }
+      return y;
+    }
+
+    function growthNeeded(pop) { return 10 + 8 * (pop - 1); }
+    function prodCost(key) { return UNIT_TYPES[key] ? UNIT_TYPES[key].cost : BUILDINGS[key].cost; }
+    function prodName(key, owner) { return UNIT_TYPES[key] ? UNIT_TYPES[key].name : bInfo(key, owner).name; }
+
+    function wonderBuiltAnywhere(key) {
+      return cities.some(ct => ct.buildings.includes(key));
+    }
+
+    // what can this city build right now?
+    function buildOptions(city) {
+      const opts = ["scout", "warrior", "settler"];
+      for (const [key, b] of Object.entries(BUILDINGS)) {
+        if (city.buildings.includes(key)) continue;
+        if (b.tech && !researched.has(b.tech)) continue;
+        if (b.wonder && wonderBuiltAnywhere(key)) continue;
+        if (b.needs && !b.needs.every(n => city.buildings.includes(n))) continue;
+        opts.push(key);
+      }
+      return opts;
+    }
+
+    const messages = [];
+    function say(text) { messages.push(text); }
+
+    // one turn of life inside a city: eating, growing, building
+    function processCity(city, speed) {
+      const y = cityYields(city);
+      // growth: people eat 2 food each, leftovers fill the growth bar
+      const surplus = y.f - city.pop * 2;
+      city.foodBucket += surplus * speed;
+      if (city.foodBucket >= growthNeeded(city.pop)) {
+        city.pop++;
+        city.foodBucket = 0;
+        if (city.owner === playerKey) say("👥 " + city.name + " grew to " + city.pop + " people!");
+      }
+      if (city.foodBucket < 0) { // starving!
+        if (city.pop > 1) city.pop--;
+        city.foodBucket = 0;
+        if (city.owner === playerKey) say("😰 " + city.name + " is hungry and shrank!");
+      }
+      // production
+      if (city.producing) {
+        city.prodBucket += y.p * speed;
+        const cost = prodCost(city.producing);
+        if (city.prodBucket >= cost) {
+          const item = city.producing;
+          if (UNIT_TYPES[item]) {
+            // find a spot for the new unit
+            let spot = !unitAt(city.r, city.c) ? { r: city.r, c: city.c }
+              : neighbors(city.r, city.c).find(n => TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c));
+            if (spot) {
+              units.push(makeUnit(item, spot.r, spot.c, city.owner));
+              city.prodBucket -= cost;
+              city.producing = null;
+              if (city.owner === playerKey) say("🛠️ " + city.name + " finished a " + UNIT_TYPES[item].name + "!");
+            } // no spot? production waits patiently
+          } else {
+            city.buildings.push(item);
+            city.prodBucket -= cost;
+            city.producing = null;
+            if (city.owner === playerKey) {
+              say((BUILDINGS[item].wonder ? "🌟 WONDER COMPLETE: " : "🏗️ ") + city.name + " built the " + bInfo(item, city.owner).name + "!");
+            }
+          }
+        }
+      }
+      return y;
+    }
+
+    function availableTechs() {
+      return Object.keys(TECHS).filter(k =>
+        !researched.has(k) && TECHS[k].req.every(rq => researched.has(rq)));
+    }
+    function nextPolicyCost() {
+      const base = POLICY_COSTS[Math.min(adopted.size, POLICY_COSTS.length - 1)];
+      return playerKey === "boland" ? Math.round(base * 0.75) : base; // Bolun's discount!
+    }
+    function availablePolicies() {
+      return Object.keys(POLICIES).filter(k => !adopted.has(k));
+    }
+
     // ===== DRAWING =====
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
     function hexCorner(x, y, size, i) {
-      // corner number i of a squashed (camera-tilted) hexagon
-      const a = Math.PI / 180 * (60 * i - 30); // pointy-top hexagon
+      const a = Math.PI / 180 * (60 * i - 30);
       return { x: x + size * Math.cos(a), y: y + size * Math.sin(a) * SQUASH };
     }
 
@@ -406,9 +635,7 @@
     }
 
     function drawSkirt(x, y, size, depth, color) {
-      // the chunky 3D side of a lifted tile: follow the bottom half of the
-      // hexagon, then come back the same way but lower down
-      const lower = [5, 0, 1, 2, 3]; // corners along the bottom silhouette
+      const lower = [5, 0, 1, 2, 3];
       ctx.beginPath();
       for (let k = 0; k < lower.length; k++) {
         const p = hexCorner(x, y, size, lower[k]);
@@ -423,28 +650,25 @@
     }
 
     function drawDecorations(x, y, t) {
-      // little cartoony details on top of tiles, Civ 6 style
       if (t === "forest") {
-        // puffy round trees like Civ 6
         for (const [dx, dy] of [[-9, 2], [8, -1], [-1, -8]]) {
           ctx.fillStyle = "#7a4a1e";
           ctx.fillRect(x + dx - 1.5, y + dy + 2, 3, 6);
           ctx.fillStyle = "#3f9142";
           ctx.beginPath(); ctx.arc(x + dx, y + dy - 3, 6.5, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#57ab55"; // sunny side of the tree
+          ctx.fillStyle = "#57ab55";
           ctx.beginPath(); ctx.arc(x + dx - 2, y + dy - 5, 3.5, 0, Math.PI * 2); ctx.fill();
         }
       } else if (t === "mountain") {
-        // big peak with a shaded side and snowy cap
         ctx.fillStyle = "#7c7a8a";
         ctx.beginPath();
         ctx.moveTo(x - 2, y - 18); ctx.lineTo(x - 16, y + 12); ctx.lineTo(x + 16, y + 12);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle = "#615f70"; // shadow side
+        ctx.fillStyle = "#615f70";
         ctx.beginPath();
         ctx.moveTo(x - 2, y - 18); ctx.lineTo(x + 16, y + 12); ctx.lineTo(x + 4, y + 12);
         ctx.closePath(); ctx.fill();
-        ctx.fillStyle = "#f4f6fb"; // snowy top
+        ctx.fillStyle = "#f4f6fb";
         ctx.beginPath();
         ctx.moveTo(x - 2, y - 18); ctx.lineTo(x - 8, y - 5); ctx.lineTo(x - 2, y - 7);
         ctx.lineTo(x + 2, y - 4); ctx.lineTo(x + 5, y - 6);
@@ -460,7 +684,6 @@
           ctx.stroke();
         }
       } else if (t === "desert") {
-        // sand dunes
         ctx.strokeStyle = "#d9b567"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
         for (const [dx, dy] of [[-8, 3], [7, -5], [1, 9]]) {
           ctx.beginPath();
@@ -469,7 +692,6 @@
           ctx.stroke();
         }
       } else if (t === "grass") {
-        // tiny tufts of grass
         ctx.strokeStyle = "#5da844"; ctx.lineWidth = 2; ctx.lineCap = "round";
         for (const [dx, dy] of [[-8, 4], [7, -4], [0, 9]]) {
           ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx - 2, y + dy - 5); ctx.stroke();
@@ -478,20 +700,16 @@
       }
     }
 
-    function drawUnit(x, y, type) {
-      // every civ's units get their own colors, skin, and face!
-      const civ = playerCiv;
-      // soft shadow under their feet
+    function drawUnit(u, x, y) {
+      const civ = CIVS[u.owner];
+      const type = u.type;
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 15, 11, 4, 0, 0, Math.PI * 2); ctx.fill();
-      // body
       ctx.fillStyle = civ.shirt;
       ctx.beginPath(); ctx.ellipse(x, y + 6, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
-      // head
       ctx.fillStyle = civ.skin;
       ctx.beginPath(); ctx.arc(x, y - 8, 7, 0, Math.PI * 2); ctx.fill();
       if (civ.head === "pig") {
-        // pig ears and snout for the Pig-men!
         ctx.fillStyle = civ.skin;
         ctx.beginPath(); ctx.moveTo(x - 6, y - 13); ctx.lineTo(x - 8, y - 19); ctx.lineTo(x - 2, y - 15); ctx.closePath(); ctx.fill();
         ctx.beginPath(); ctx.moveTo(x + 6, y - 13); ctx.lineTo(x + 8, y - 19); ctx.lineTo(x + 2, y - 15); ctx.closePath(); ctx.fill();
@@ -501,25 +719,27 @@
         ctx.beginPath(); ctx.arc(x - 1.5, y - 6, 0.8, 0, Math.PI * 2); ctx.fill();
         ctx.beginPath(); ctx.arc(x + 1.5, y - 6, 0.8, 0, Math.PI * 2); ctx.fill();
       } else if (civ.head === "pigeon") {
-        // beak and beady eye for the Pigeonians!
         ctx.fillStyle = "#f2a531";
         ctx.beginPath(); ctx.moveTo(x + 6, y - 9); ctx.lineTo(x + 13, y - 7); ctx.lineTo(x + 6, y - 5); ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#222";
         ctx.beginPath(); ctx.arc(x + 3, y - 10, 1.5, 0, Math.PI * 2); ctx.fill();
       } else {
-        // hat (hard hat, helmet, hair... every civ wears it differently)
         ctx.fillStyle = civ.hat;
         ctx.beginPath(); ctx.arc(x, y - 10, 7.5, Math.PI, 0); ctx.fill();
         ctx.fillRect(x - 9, y - 10, 18, 3);
       }
       if (type === "settler") {
-        // the settler carries a shovel
         ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(x + 11, y - 14); ctx.lineTo(x + 11, y + 8); ctx.stroke();
         ctx.fillStyle = "#9aa0aa";
         ctx.beginPath(); ctx.ellipse(x + 11, y + 12, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+      } else if (type === "warrior") {
+        // a mighty sword!
+        ctx.strokeStyle = "#c8ccd4"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 11, y - 16); ctx.lineTo(x + 11, y + 4); ctx.stroke();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.moveTo(x + 7, y + 2); ctx.lineTo(x + 15, y + 2); ctx.stroke();
       } else {
-        // the scout carries the civilization's flag
         ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(x + 11, y - 18); ctx.lineTo(x + 11, y + 12); ctx.stroke();
         ctx.fillStyle = civ.secondary;
@@ -532,72 +752,75 @@
       ctx.beginPath(); ctx.arc(x, y - 28, 8, 0, Math.PI * 2); ctx.fill();
       ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
       ctx.font = "9px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
-      ctx.fillText(type === "settler" ? "🏠" : "🔭", x, y - 27);
+      ctx.fillText(UNIT_TYPES[type].icon, x, y - 27);
       ctx.textBaseline = "alphabetic";
     }
 
     function drawCity(city) {
       const p = hexCenter(city.r, city.c);
       const x = p.x, y = p.y - liftAt(city.r, city.c);
-      // shadow
+      const civ = CIVS[city.owner];
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 14, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
-      // big house
       ctx.fillStyle = "#e8dcc2";
       ctx.fillRect(x - 12, y - 2, 13, 15);
-      ctx.fillStyle = "#c8402e"; // red roof
+      ctx.fillStyle = "#c8402e";
       ctx.beginPath();
       ctx.moveTo(x - 14, y - 2); ctx.lineTo(x - 5.5, y - 12); ctx.lineTo(x + 3, y - 2);
       ctx.closePath(); ctx.fill();
-      // small house
       ctx.fillStyle = "#e8dcc2";
       ctx.fillRect(x + 3, y + 3, 10, 10);
       ctx.fillStyle = "#c8402e";
       ctx.beginPath();
       ctx.moveTo(x + 1, y + 3); ctx.lineTo(x + 8, y - 4); ctx.lineTo(x + 15, y + 3);
       ctx.closePath(); ctx.fill();
-      // door
       ctx.fillStyle = "#7a4a1e";
       ctx.fillRect(x - 8, y + 5, 5, 8);
-      // your civilization's flag on the big house
+      // the civ's flag on the big house
       ctx.strokeStyle = "#555"; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(x - 5.5, y - 12); ctx.lineTo(x - 5.5, y - 22); ctx.stroke();
-      ctx.fillStyle = playerCiv.secondary;
+      ctx.fillStyle = civ.secondary;
       ctx.beginPath();
       ctx.moveTo(x - 5.5, y - 22); ctx.lineTo(x + 4, y - 19); ctx.lineTo(x - 5.5, y - 16);
       ctx.closePath(); ctx.fill();
-      // city name on a little banner
+      // banner: population + name (+ star for a wonder!)
+      const star = city.buildings.some(b => BUILDINGS[b].wonder) ? " ⭐" : "";
+      const label = "👥" + city.pop + " " + city.name + star;
       ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center";
-      const w = ctx.measureText(city.name).width + 10;
-      ctx.fillStyle = "rgba(20,40,90,0.85)";
+      const w = ctx.measureText(label).width + 10;
+      ctx.fillStyle = civ.primary;
       ctx.fillRect(x - w / 2, y - 40, w, 16);
-      ctx.fillStyle = "#ffe066";
-      ctx.fillText(city.name, x, y - 28);
+      ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1;
+      ctx.strokeRect(x - w / 2, y - 40, w, 16);
+      ctx.fillStyle = "white";
+      ctx.fillText(label, x, y - 28);
     }
 
     function drawBorders() {
-      // Le Diggers borders: blue and yellow, drawn only on the OUTSIDE
-      // edges of the territory (like Civ 6 country borders)
-      const owned = territorySet();
-      for (const key of owned) {
-        const [r, c] = key.split(",").map(Number);
-        const p = hexCenter(r, c);
-        const top = p.y - liftAt(r, c);
-        for (let i = 0; i < 6; i++) {
-          const c1 = hexCorner(p.x, top, HEX, i);
-          const c2 = hexCorner(p.x, top, HEX, i + 1 === 6 ? 0 : i + 1);
-          const x1 = c1.x, y1 = c1.y, x2 = c2.x, y2 = c2.y;
-          // the tile on the other side of this edge (measured without the lift)
-          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 + liftAt(r, c);
-          const beyond = pixelToHex(p.x + (mx - p.x) * 2, p.y + (my - p.y) * 2);
-          const outside = !beyond || !owned.has(beyond.r + "," + beyond.c);
-          if (outside) {
-            ctx.lineCap = "round";
-            ctx.strokeStyle = playerCiv.primary; ctx.lineWidth = 6;
-            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
-            ctx.strokeStyle = playerCiv.secondary; ctx.lineWidth = 2.5;
-            ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+      // every civilization's borders in their own colors
+      const owners = [...new Set(cities.map(ct => ct.owner))];
+      for (const owner of owners) {
+        const owned = territorySet(owner);
+        const civ = CIVS[owner];
+        for (const key of owned) {
+          const [r, c] = key.split(",").map(Number);
+          if (!isExplored(r, c)) continue; // hidden by fog
+          const p = hexCenter(r, c);
+          const top = p.y - liftAt(r, c);
+          for (let i = 0; i < 6; i++) {
+            const c1 = hexCorner(p.x, top, HEX, i);
+            const c2 = hexCorner(p.x, top, HEX, i + 1 === 6 ? 0 : i + 1);
+            const mx = (c1.x + c2.x) / 2, my = (c1.y + c2.y) / 2 + liftAt(r, c);
+            const beyond = pixelToHex(p.x + (mx - p.x) * 2, p.y + (my - p.y) * 2);
+            const outside = !beyond || !owned.has(beyond.r + "," + beyond.c);
+            if (outside) {
+              ctx.lineCap = "round";
+              ctx.strokeStyle = civ.primary; ctx.lineWidth = 6;
+              ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+              ctx.strokeStyle = civ.secondary; ctx.lineWidth = 2.5;
+              ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+            }
           }
         }
       }
@@ -606,12 +829,10 @@
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.save();
-      ctx.translate(-cam.x, -cam.y); // the camera slides the world around
-      // tiles, drawn top row first so closer tiles overlap farther ones (3D!)
+      ctx.translate(-cam.x, -cam.y);
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
         if (!isExplored(r, c)) {
-          // fog of war: blank parchment, like an old unexplored map
           drawHex(p.x, p.y, HEX, "#d8cdaf", "rgba(140,125,95,0.4)", 1.5);
           ctx.fillStyle = "rgba(140,125,95,0.35)";
           for (const [dx, dy] of [[-8, -4], [6, 2], [-2, 8]]) {
@@ -622,12 +843,10 @@
         const t = map[r][c];
         const top = p.y - LIFT[t];
         if (LIFT[t] > 0) {
-          // the chunky shaded side of the tile
           drawSkirt(p.x, top, HEX, LIFT[t] + 4, shade(TERRAIN[t].color, 0.55));
         }
         drawHex(p.x, top, HEX, TERRAIN[t].color, "rgba(255,255,255,0.22)", 1.5);
         drawDecorations(p.x, top, t);
-        // luxury resource icon in a little circle, Civ 6 style
         const res = resources[r + "," + c];
         if (res) {
           ctx.fillStyle = "rgba(255,255,255,0.9)";
@@ -635,69 +854,218 @@
           ctx.strokeStyle = RESOURCES[res].color; ctx.lineWidth = 2; ctx.stroke();
           ctx.fillStyle = RESOURCES[res].color;
           ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 4, 0, Math.PI * 2); ctx.fill();
-          if (res === "darkmatter") { // sparkles!
+          if (res === "darkmatter") {
             ctx.fillStyle = "white";
             ctx.beginPath(); ctx.arc(p.x - 14.5, top + 8.5, 1.2, 0, Math.PI * 2); ctx.fill();
           }
         }
       }
-      // country borders go on top of the tiles
       drawBorders();
-      // cities
-      for (const city of cities) drawCity(city);
-      // green rings = where the selected unit can move
+      for (const city of cities) {
+        if (isExplored(city.r, city.c)) drawCity(city);
+      }
+      // ring around the selected city
+      if (selectedCity) {
+        const p = hexCenter(selectedCity.r, selectedCity.c);
+        drawHex(p.x, p.y - liftAt(selectedCity.r, selectedCity.c), HEX - 3, null, "#ffd966", 3);
+      }
       if (selected) {
         for (const t of reachableTiles(selected)) {
           const p = hexCenter(t.r, t.c);
           drawHex(p.x, p.y - liftAt(t.r, t.c), HEX - 5, null, "#33ff88", 3.5);
         }
       }
-      // the units (with a glowing ring on the selected one)
       for (const u of units) {
+        if (u.owner !== playerKey && !isExplored(u.r, u.c)) continue; // hidden in fog
         const p = hexCenter(u.r, u.c);
         const top = p.y - liftAt(u.r, u.c);
         if (u === selected) drawHex(p.x, top, HEX - 3, null, "#ffffff", 3);
-        drawUnit(p.x, top, u.type);
+        drawUnit(u, p.x, top);
       }
       ctx.restore();
     }
 
-    // ===== CLICKS AND TURNS =====
+    // ===== UI PANELS =====
     const info = document.getElementById("info");
     const foundBtn = document.getElementById("foundCity");
+    const cityPanel = document.getElementById("cityPanel");
+    const techBtn = document.getElementById("techBtn");
+    const policyBtn = document.getElementById("policyBtn");
+
+    function updateTopbar() {
+      let sci = 0, cul = 0;
+      for (const city of myCities()) {
+        const y = cityYields(city);
+        sci += y.s; cul += y.cu;
+      }
+      lastScience = sci; lastCulture = cul;
+      document.getElementById("statTurn").textContent = "Turn " + turn;
+      document.getElementById("statSci").textContent = "🔬 +" + sci;
+      document.getElementById("statCul").textContent = "🎭 " + cultureBucket + " (+" + cul + ")";
+      document.getElementById("statGold").textContent = "💰 " + gold;
+      const techSpan = document.getElementById("statTech");
+      if (currentTech) {
+        const need = TECHS[currentTech].cost - scienceBucket;
+        const turns = sci > 0 ? Math.ceil(need / sci) : "∞";
+        techSpan.textContent = "Researching " + TECHS[currentTech].name + " (" + turns + " turns)";
+      } else {
+        techSpan.textContent = "";
+      }
+      techBtn.style.display = (!currentTech && availableTechs().length && myCities().length) ? "" : "none";
+      policyBtn.style.display = (cultureBucket >= nextPolicyCost() && availablePolicies().length) ? "" : "none";
+    }
 
     function updateButtons() {
-      // the Found City button only shows for a selected settler
       foundBtn.style.display = (selected && selected.type === "settler") ? "" : "none";
     }
 
+    function renderCityPanel() {
+      if (!selectedCity || selectedCity.owner !== playerKey) {
+        cityPanel.style.display = "none";
+        return;
+      }
+      const city = selectedCity;
+      const y = cityYields(city);
+      const surplus = y.f - city.pop * 2;
+      const growTurns = surplus > 0 ? Math.ceil((growthNeeded(city.pop) - city.foodBucket) / surplus) : "∞";
+      let html = "<b>🏙️ " + city.name + "</b> — 👥 " + city.pop +
+        " (grows in " + growTurns + " turns) | 🍞 +" + surplus + " 🔨 +" + y.p +
+        " 💰 +" + y.g + " 🔬 +" + y.s + " 🎭 +" + y.cu + "<br>";
+      if (city.producing) {
+        const left = Math.ceil((prodCost(city.producing) - city.prodBucket) / Math.max(1, y.p));
+        html += "Building: <b>" + prodName(city.producing, city.owner) + "</b> (" + left + " turns) ";
+      } else {
+        html += "Choose what to build: ";
+      }
+      cityPanel.innerHTML = html;
+      for (const opt of buildOptions(city)) {
+        const btn = document.createElement("button");
+        const cost = prodCost(opt);
+        btn.textContent = prodName(opt, city.owner) + " (" + cost + "🔨)";
+        if (city.producing === opt) btn.disabled = true;
+        btn.addEventListener("click", () => {
+          city.producing = opt;
+          renderCityPanel();
+        });
+        cityPanel.appendChild(btn);
+      }
+      cityPanel.style.display = "";
+    }
+
+    function renderTechPanel() {
+      const list = document.getElementById("techList");
+      list.innerHTML = "";
+      for (const key of availableTechs()) {
+        const t = TECHS[key];
+        const card = document.createElement("button");
+        card.className = "civCard";
+        const turns = lastScience > 0 ? Math.ceil(Math.max(0, t.cost - scienceBucket) / lastScience) : "?";
+        card.innerHTML = '<div class="civName">' + t.name + "</div>" +
+          '<div class="ability">' + t.gives + "</div>" +
+          '<div class="leader">' + t.cost + " 🔬 (about " + turns + " turns)</div>";
+        card.addEventListener("click", () => {
+          currentTech = key;
+          document.getElementById("techPanel").style.display = "none";
+          updateTopbar();
+        });
+        list.appendChild(card);
+      }
+      document.getElementById("techPanel").style.display = "flex";
+    }
+
+    function renderPolicyPanel() {
+      const list = document.getElementById("policyList");
+      list.innerHTML = "";
+      for (const key of availablePolicies()) {
+        const pol = POLICIES[key];
+        const card = document.createElement("button");
+        card.className = "civCard";
+        card.innerHTML = '<div class="civName">' + pol.name + "</div>" +
+          '<div class="ability">' + pol.desc + "</div>";
+        card.addEventListener("click", () => {
+          const price = nextPolicyCost(); // pay THIS policy's price, then it goes up
+          adopted.add(key);
+          cultureBucket -= price;
+          if (key === "honor") {
+            for (const u of units) if (u.owner === playerKey) { u.maxMoves++; u.moves++; }
+          }
+          document.getElementById("policyPanel").style.display = "none";
+          info.textContent = "🎭 You adopted " + pol.name + "! " + pol.desc;
+          updateTopbar();
+          draw();
+        });
+        list.appendChild(card);
+      }
+      document.getElementById("policyPanel").style.display = "flex";
+    }
+
+    techBtn.addEventListener("click", renderTechPanel);
+    policyBtn.addEventListener("click", renderPolicyPanel);
+    document.getElementById("techLater").addEventListener("click", () => {
+      document.getElementById("techPanel").style.display = "none";
+    });
+    document.getElementById("policyLater").addEventListener("click", () => {
+      document.getElementById("policyPanel").style.display = "none";
+    });
+
+    // ===== CLICKS AND TURNS =====
     function handleClick(x, y) {
       const hex = pixelToHex(x, y);
       if (!hex) return;
 
+      const town = cityAt(hex.r, hex.c);
       const clickedUnit = unitAt(hex.r, hex.c);
-      if (clickedUnit) {
-        // click a unit = select it (click again to unselect)
-        selected = (selected === clickedUnit) ? null : clickedUnit;
+      if (clickedUnit && (clickedUnit.owner === playerKey || isExplored(hex.r, hex.c))) {
+        if (clickedUnit.owner === playerKey) {
+          selected = (selected === clickedUnit) ? null : clickedUnit;
+          selectedCity = null;
+        } else {
+          info.textContent = "That's a " + UNIT_TYPES[clickedUnit.type].name + " of " + CIVS[clickedUnit.owner].name + "!";
+        }
+      } else if (town && isExplored(hex.r, hex.c) && !selected) {
+        if (town.owner === playerKey) {
+          selectedCity = (selectedCity === town) ? null : town;
+          selected = null;
+        } else {
+          info.textContent = "That's " + town.name + ", a city of " + CIVS[town.owner].name + "!";
+        }
       } else if (selected) {
         const ok = reachableTiles(selected).some(t => t.r === hex.r && t.c === hex.c);
         if (ok) {
-          // how many steps did that take? (1 or 2)
           const oneStep = neighbors(selected.r, selected.c).some(n => n.r === hex.r && n.c === hex.c);
           selected.moves -= oneStep ? 1 : 2;
           selected.r = hex.r; selected.c = hex.c;
-          reveal(hex.r, hex.c, 2); // moving uncovers the fog!
+          reveal(hex.r, hex.c, 2);
           info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
           if (selected.moves <= 0) selected = null;
+          checkMeetings();
+          showMessages(); // "You met..." is big news!
         } else {
           info.textContent = "Can't go there! " + TERRAIN[map[hex.r][hex.c]].name;
         }
+      } else {
+        selectedCity = null;
       }
       updateButtons();
+      renderCityPanel();
       draw();
     }
 
-    // drag the map to look around; a tiny click (no dragging) selects things
+    // meeting other civilizations (they arrive in part 2!)
+    function checkMeetings() {
+      const others = [...new Set([...units, ...cities].map(o => o.owner))].filter(o => o && o !== playerKey);
+      for (const o of others) {
+        if (met.has(o)) continue;
+        const spotted =
+          units.some(u => u.owner === o && isExplored(u.r, u.c)) ||
+          cities.some(ct => ct.owner === o && isExplored(ct.r, ct.c));
+        if (spotted) {
+          met.add(o);
+          say("🤝 You met " + CIVS[o].name + ", led by " + CIVS[o].leader + "!");
+        }
+      }
+    }
+
     let drag = null;
     canvas.addEventListener("mousedown", (e) => {
       drag = { sx: e.clientX, sy: e.clientY, camX: cam.x, camY: cam.y, moved: false };
@@ -711,7 +1079,6 @@
     });
     window.addEventListener("mouseup", () => { drag = null; });
 
-    // arrow keys pan the camera too
     window.addEventListener("keydown", (e) => {
       const step = 60;
       if (e.key === "ArrowLeft") cam.x -= step;
@@ -724,27 +1091,6 @@
       draw();
     });
 
-    foundBtn.addEventListener("click", () => {
-      if (!selected || selected.type !== "settler") return;
-      const settler = selected;
-      if (territorySet().has(settler.r + "," + settler.c)) {
-        info.textContent = "Too close to another city! Move a bit further away.";
-        return;
-      }
-      // the settler becomes the city — and a scout pops out to keep exploring!
-      const city = { r: settler.r, c: settler.c, name: playerCiv.cityNames[cities.length % playerCiv.cityNames.length] };
-      cities.push(city);
-      reveal(city.r, city.c, 2); // a new city sees far around itself
-      units = units.filter(u => u !== settler);
-      selected = null;
-      const spot = neighbors(city.r, city.c).find(n => TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c));
-      if (spot) units.push(makeUnit("scout", spot.r, spot.c));
-      info.textContent = "🎉 " + city.name + " founded! A scout with the Le Diggers flag is ready to explore.";
-      updateButtons();
-      draw();
-    });
-
-    // dragging pans the camera; plain hovering shows what a tile is
     canvas.addEventListener("mousemove", (e) => {
       if (drag) {
         const dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
@@ -759,7 +1105,7 @@
       }
       const rect = canvas.getBoundingClientRect();
       const hex = pixelToHex(e.clientX - rect.left + cam.x, e.clientY - rect.top + cam.y);
-      if (hex && !selected) {
+      if (hex && !selected && !selectedCity) {
         if (!isExplored(hex.r, hex.c)) {
           info.textContent = "Unexplored ☁️ — send a scout!";
         } else {
@@ -771,18 +1117,78 @@
       }
     });
 
-    let turn = 1;
-    document.getElementById("endTurn").addEventListener("click", () => {
-      turn++;
+    foundBtn.addEventListener("click", () => {
+      if (!selected || selected.type !== "settler") return;
+      const settler = selected;
+      if (allTerritory().has(settler.r + "," + settler.c)) {
+        info.textContent = "Too close to another city! Move a bit further away.";
+        return;
+      }
+      const names = CIVS[playerKey].cityNames;
+      const count = myCities().length;
+      const city = {
+        r: settler.r, c: settler.c, owner: playerKey,
+        name: names[count % names.length],
+        pop: 1, foodBucket: 0, prodBucket: 0, producing: null, buildings: [],
+      };
+      cities.push(city);
+      reveal(city.r, city.c, 2);
+      units = units.filter(u => u !== settler);
       selected = null;
-      for (const u of units) u.moves = u.maxMoves;
-      info.textContent = "Turn " + turn + " — everyone has their moves back!";
+      selectedCity = city; // open the city panel so you can pick production!
+      say("🎉 " + city.name + " founded! Pick what it should build.");
+      showMessages();
       updateButtons();
+      updateTopbar();
+      renderCityPanel();
       draw();
     });
 
+    function showMessages() {
+      if (messages.length) {
+        info.textContent = messages.slice(-3).join("  •  ");
+        messages.length = 0;
+      }
+    }
+
+    document.getElementById("endTurn").addEventListener("click", () => {
+      // 1. your cities eat, grow, and build
+      let sci = 0, cul = 0, gld = 0;
+      for (const city of myCities()) {
+        const y = processCity(city, 1);
+        sci += y.s; cul += y.cu; gld += y.g;
+      }
+      scienceBucket += sci;
+      cultureBucket += cul;
+      gold += gld;
+      // 2. research marches on
+      if (currentTech && scienceBucket >= TECHS[currentTech].cost) {
+        scienceBucket -= TECHS[currentTech].cost;
+        researched.add(currentTech);
+        say("🔬 RESEARCHED: " + TECHS[currentTech].name + " — " + TECHS[currentTech].gives + "!");
+        currentTech = null;
+      }
+      // 3. everyone gets their moves back
+      turn++;
+      selected = null;
+      for (const u of units) if (u.owner === playerKey) u.moves = u.maxMoves;
+      aiTurn();
+      checkMeetings();
+      say("Turn " + turn + " — your move!");
+      showMessages();
+      updateButtons();
+      updateTopbar();
+      renderCityPanel();
+      draw();
+      // gentle nudges
+      if (!currentTech && availableTechs().length && myCities().length) renderTechPanel();
+      else if (cultureBucket >= nextPolicyCost() && availablePolicies().length) renderPolicyPanel();
+    });
+
+    // the AI civilizations take their turn here (arriving in part 2!)
+    function aiTurn() {}
+
     // ===== START THE GAME =====
-    // First, build the choose-your-civilization screen
     const civList = document.getElementById("civList");
     for (const [key, civ] of Object.entries(CIVS)) {
       const card = document.createElement("button");
@@ -797,16 +1203,17 @@
     }
 
     function startGame(key) {
-      playerCiv = CIVS[key];
+      playerKey = key;
       document.getElementById("picker").style.display = "none";
       document.getElementById("title").textContent =
-        playerCiv.emoji + " " + playerCiv.name + " — Settle the Land!";
+        CIVS[key].emoji + " " + CIVS[key].name + " — Build Your Empire!";
       makeMap();
       scatterResources();
       placeSettlerOnLand();
       reveal(units[0].r, units[0].c, 2);
       centerCameraOn(units[0].r, units[0].c);
-      info.textContent = playerCiv.leader + " says: move the settler somewhere nice, then press Found City! (Drag the map to explore)";
+      info.textContent = CIVS[key].leader + " says: move the settler somewhere nice, then press Found City! (Drag the map to explore)";
+      updateTopbar();
       draw();
     }
   </script>
