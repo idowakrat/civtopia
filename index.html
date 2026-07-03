@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Our Game</title>
+  <title>Our Game — Le Diggers!</title>
   <style>
     body {
       margin: 0;
@@ -12,14 +12,302 @@
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
-      height: 100vh;
+      min-height: 100vh;
     }
-    h1 { font-size: 3em; }
+    h1 { font-size: 1.6em; margin: 10px 0 2px; }
+    #info {
+      margin: 4px 0 8px;
+      font-size: 1em;
+      color: #ffd966;
+      min-height: 1.2em;
+    }
+    canvas {
+      background: #10102a;
+      border: 3px solid #4466aa;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    button {
+      margin: 10px;
+      font-size: 1.1em;
+      padding: 8px 20px;
+      border-radius: 8px;
+      border: none;
+      background: #ffb733;
+      color: #40300a;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background: #ffd966; }
   </style>
 </head>
 <body>
-  <h1>🎮 Ready to build!</h1>
-  <p>Ask Claude to turn this page into your game.</p>
+  <h1>⛏️ Le Diggers — Explore the Land!</h1>
+  <div id="info">Click your digger, then click a green-ringed tile to move.</div>
+  <canvas id="game" width="1000" height="640"></canvas>
+  <button id="endTurn">End Turn ⏭️</button>
+
+  <script>
+    // ===== THE MAP =====
+    // The map is made of hexagons (like Civilization!).
+    // Each hex has a terrain type. Some you can walk on, some you can't.
+    const COLS = 17;
+    const ROWS = 11;
+    const HEX = 32; // size of one hexagon
+
+    const TERRAIN = {
+      water:    { color: "#3d7ecc", walk: false, name: "Water 🌊" },
+      grass:    { color: "#6abe4d", walk: true,  name: "Grassland 🌿" },
+      plains:   { color: "#c9c25a", walk: true,  name: "Plains 🌾" },
+      desert:   { color: "#eed08a", walk: true,  name: "Desert 🏜️ (Le Diggers love this!)" },
+      forest:   { color: "#3e8a3e", walk: true,  name: "Forest 🌲" },
+      mountain: { color: "#8d8d99", walk: false, name: "Mountain ⛰️ (too steep!)" },
+    };
+
+    // Build a random island-ish map
+    let map = [];
+    function makeMap() {
+      // Step 1: random bumpiness numbers for every tile
+      let noise = [];
+      for (let r = 0; r < ROWS; r++) {
+        noise[r] = [];
+        for (let c = 0; c < COLS; c++) noise[r][c] = Math.random();
+      }
+      // Step 2: smooth it out so land forms blobs, not confetti
+      for (let pass = 0; pass < 2; pass++) {
+        let smooth = [];
+        for (let r = 0; r < ROWS; r++) {
+          smooth[r] = [];
+          for (let c = 0; c < COLS; c++) {
+            let total = 0, count = 0;
+            for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+              const rr = r + dr, cc = c + dc;
+              if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) { total += noise[rr][cc]; count++; }
+            }
+            smooth[r][c] = total / count;
+          }
+        }
+        noise = smooth;
+      }
+      // Step 3: turn numbers into terrain. Edges become ocean.
+      for (let r = 0; r < ROWS; r++) {
+        map[r] = [];
+        for (let c = 0; c < COLS; c++) {
+          const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c); // distance from map edge
+          const v = noise[r][c] - (edge === 0 ? 0.25 : 0);
+          let t;
+          if (v < 0.42) t = "water";
+          else if (v < 0.48) t = "desert";
+          else if (v < 0.55) t = "plains";
+          else if (v < 0.62) t = "grass";
+          else if (v < 0.67) t = "forest";
+          else t = "mountain";
+          map[r][c] = t;
+        }
+      }
+    }
+
+    // ===== HEX MATH =====
+    // These turn a row+column into a pixel spot on screen (and back).
+    const W = Math.sqrt(3) * HEX;   // width of a hex
+    const H = HEX * 1.5;            // vertical distance between rows
+    const OX = 40, OY = 50;         // margin so the map isn't glued to the corner
+
+    function hexCenter(r, c) {
+      return { x: OX + c * W + (r % 2 ? W / 2 : 0), y: OY + r * H };
+    }
+    function pixelToHex(x, y) {
+      // find the closest hex center to where you clicked
+      let best = null, bestDist = Infinity;
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const p = hexCenter(r, c);
+        const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+        if (d < bestDist) { bestDist = d; best = { r, c }; }
+      }
+      return bestDist < HEX * HEX ? best : null;
+    }
+    function neighbors(r, c) {
+      // the 6 hexes around a hex (different for even/odd rows)
+      const even = [[-1,-1],[-1,0],[0,-1],[0,1],[1,-1],[1,0]];
+      const odd  = [[-1,0],[-1,1],[0,-1],[0,1],[1,0],[1,1]];
+      return (r % 2 ? odd : even)
+        .map(([dr, dc]) => ({ r: r + dr, c: c + dc }))
+        .filter(p => p.r >= 0 && p.r < ROWS && p.c >= 0 && p.c < COLS);
+    }
+
+    // ===== THE UNIT =====
+    // Your first Le Diggers unit: a digger with a shovel!
+    let digger = { r: 0, c: 0, moves: 2, maxMoves: 2, selected: false };
+
+    function placeDiggerOnLand() {
+      // start near the middle, on a walkable tile
+      for (let tries = 0; tries < 500; tries++) {
+        const r = Math.floor(ROWS / 2 + (Math.random() - 0.5) * 4);
+        const c = Math.floor(COLS / 2 + (Math.random() - 0.5) * 6);
+        if (TERRAIN[map[r][c]].walk) { digger.r = r; digger.c = c; return; }
+      }
+    }
+
+    function reachableTiles() {
+      // where can the digger go right now? (1 move point per step)
+      if (digger.moves <= 0) return [];
+      let frontier = [{ r: digger.r, c: digger.c, left: digger.moves }];
+      let seen = { [digger.r + "," + digger.c]: true };
+      let result = [];
+      while (frontier.length) {
+        const cur = frontier.pop();
+        if (cur.left === 0) continue;
+        for (const n of neighbors(cur.r, cur.c)) {
+          const key = n.r + "," + n.c;
+          if (seen[key] || !TERRAIN[map[n.r][n.c]].walk) continue;
+          seen[key] = true;
+          result.push(n);
+          frontier.push({ r: n.r, c: n.c, left: cur.left - 1 });
+        }
+      }
+      return result;
+    }
+
+    // ===== DRAWING =====
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
+
+    function drawHex(x, y, size, fill, stroke, lineWidth) {
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = Math.PI / 180 * (60 * i - 30); // pointy-top hexagon
+        const px = x + size * Math.cos(a), py = y + size * Math.sin(a);
+        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lineWidth || 2; ctx.stroke(); }
+    }
+
+    function drawDecorations(x, y, t) {
+      // little cartoony details on top of tiles
+      if (t === "forest") {
+        for (const dx of [-9, 3, -3]) {
+          ctx.fillStyle = "#2a6b2a";
+          ctx.beginPath();
+          ctx.moveTo(x + dx, y - 12);
+          ctx.lineTo(x + dx - 6, y + 2);
+          ctx.lineTo(x + dx + 6, y + 2);
+          ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "#7a4a1e";
+          ctx.fillRect(x + dx - 1.5, y + 2, 3, 5);
+        }
+      } else if (t === "mountain") {
+        ctx.fillStyle = "#6f6f7d";
+        ctx.beginPath();
+        ctx.moveTo(x, y - 14); ctx.lineTo(x - 13, y + 10); ctx.lineTo(x + 13, y + 10);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "white"; // snowy top
+        ctx.beginPath();
+        ctx.moveTo(x, y - 14); ctx.lineTo(x - 4.5, y - 6); ctx.lineTo(x + 4.5, y - 6);
+        ctx.closePath(); ctx.fill();
+      } else if (t === "water") {
+        ctx.strokeStyle = "#7db8ee"; ctx.lineWidth = 2;
+        for (const dy of [-5, 4]) {
+          ctx.beginPath();
+          ctx.moveTo(x - 10, y + dy);
+          ctx.quadraticCurveTo(x - 5, y + dy - 4, x, y + dy);
+          ctx.quadraticCurveTo(x + 5, y + dy + 4, x + 10, y + dy);
+          ctx.stroke();
+        }
+      } else if (t === "desert") {
+        ctx.fillStyle = "#d9b567";
+        for (const [dx, dy] of [[-8, 4], [6, -6], [2, 8]]) {
+          ctx.beginPath(); ctx.arc(x + dx, y + dy, 2, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    function drawDigger(x, y) {
+      // Le Diggers wear yellow and orange!
+      // body
+      ctx.fillStyle = "#f28c1e";
+      ctx.beginPath(); ctx.ellipse(x, y + 6, 8, 9, 0, 0, Math.PI * 2); ctx.fill();
+      // head
+      ctx.fillStyle = "#ffd9a6";
+      ctx.beginPath(); ctx.arc(x, y - 8, 7, 0, Math.PI * 2); ctx.fill();
+      // yellow hard hat
+      ctx.fillStyle = "#ffcf1f";
+      ctx.beginPath(); ctx.arc(x, y - 10, 7.5, Math.PI, 0); ctx.fill();
+      ctx.fillRect(x - 9, y - 10, 18, 3);
+      // shovel!
+      ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(x + 11, y - 14); ctx.lineTo(x + 11, y + 8); ctx.stroke();
+      ctx.fillStyle = "#9aa0aa";
+      ctx.beginPath(); ctx.ellipse(x + 11, y + 12, 4, 6, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // tiles
+      for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+        const p = hexCenter(r, c);
+        drawHex(p.x, p.y, HEX - 1, TERRAIN[map[r][c]].color, "#10102a", 2);
+        drawDecorations(p.x, p.y, map[r][c]);
+      }
+      // green rings = where you can move
+      if (digger.selected) {
+        for (const t of reachableTiles()) {
+          const p = hexCenter(t.r, t.c);
+          drawHex(p.x, p.y, HEX - 5, null, "#33ff88", 3.5);
+        }
+      }
+      // the digger (with a glowing ring when selected)
+      const dp = hexCenter(digger.r, digger.c);
+      if (digger.selected) drawHex(dp.x, dp.y, HEX - 3, null, "#ffffff", 3);
+      drawDigger(dp.x, dp.y);
+    }
+
+    // ===== CLICKS AND TURNS =====
+    const info = document.getElementById("info");
+
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
+      if (!hex) return;
+
+      if (hex.r === digger.r && hex.c === digger.c) {
+        digger.selected = !digger.selected; // click digger = select or unselect
+      } else if (digger.selected) {
+        const ok = reachableTiles().some(t => t.r === hex.r && t.c === hex.c);
+        if (ok) {
+          // how many steps did that take? (1 or 2)
+          const oneStep = neighbors(digger.r, digger.c).some(n => n.r === hex.r && n.c === hex.c);
+          digger.moves -= oneStep ? 1 : 2;
+          digger.r = hex.r; digger.c = hex.c;
+          info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + digger.moves;
+          if (digger.moves <= 0) digger.selected = false;
+        } else {
+          info.textContent = "Can't go there! " + TERRAIN[map[hex.r][hex.c]].name;
+        }
+      }
+      draw();
+    });
+
+    // hovering shows what a tile is
+    canvas.addEventListener("mousemove", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const hex = pixelToHex(e.clientX - rect.left, e.clientY - rect.top);
+      if (hex && !digger.selected) info.textContent = TERRAIN[map[hex.r][hex.c]].name;
+    });
+
+    let turn = 1;
+    document.getElementById("endTurn").addEventListener("click", () => {
+      turn++;
+      digger.moves = digger.maxMoves;
+      info.textContent = "Turn " + turn + " — your digger has " + digger.maxMoves + " moves again!";
+      draw();
+    });
+
+    // ===== START THE GAME =====
+    makeMap();
+    placeDiggerOnLand();
+    draw();
+  </script>
 </body>
 </html>
