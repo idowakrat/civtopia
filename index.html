@@ -102,11 +102,19 @@
     .civCard .stripe { height: 8px; border-radius: 4px; margin: 6px 0; }
     .civCard .leader { color: #ffd966; }
     .civCard .ability { color: #b9c4e8; }
+    .diffBtn { background: #4a4a72; color: white; }
+    .diffBtn.selected { background: #66d9ff; color: #0a2a40; }
   </style>
 </head>
 <body>
   <div id="picker" class="overlay">
     <h2>🌍 Choose Your Civilization!</h2>
+    <div style="margin-bottom:10px">
+      Difficulty:
+      <button class="diffBtn" data-d="easy">😊 Easy</button>
+      <button class="diffBtn selected" data-d="normal">🙂 Normal</button>
+      <button class="diffBtn" data-d="hard">😈 Hard</button>
+    </div>
     <div id="civList" class="cardList"></div>
   </div>
   <div id="techPanel" class="overlay" style="display:none">
@@ -1185,8 +1193,91 @@
       else if (cultureBucket >= nextPolicyCost() && availablePolicies().length) renderPolicyPanel();
     });
 
-    // the AI civilizations take their turn here (arriving in part 2!)
-    function aiTurn() {}
+    // ===== THE AI CIVILIZATIONS =====
+    let difficulty = "normal";
+    // ai = how fast AI cities work; extra = bonus settlers on hard
+    const DIFF = { easy: { ai: 0.6, extra: 0 }, normal: { ai: 1, extra: 0 }, hard: { ai: 1.5, extra: 1 } };
+
+    document.querySelectorAll(".diffBtn").forEach(b => b.addEventListener("click", () => {
+      difficulty = b.dataset.d;
+      document.querySelectorAll(".diffBtn").forEach(x => x.classList.toggle("selected", x === b));
+    }));
+
+    function setupAI() {
+      // pick 2 random rival civs (never yours)
+      const keys = Object.keys(CIVS).filter(k => k !== playerKey);
+      for (let i = keys.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [keys[i], keys[j]] = [keys[j], keys[i]];
+      }
+      const start = units[0]; // your settler
+      for (const ai of keys.slice(0, 2)) {
+        // give them a start far away from you (and from each other)
+        let best = null, bestScore = -1;
+        for (let tries = 0; tries < 400; tries++) {
+          const r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
+          if (!TERRAIN[map[r][c]].walk || unitAt(r, c)) continue;
+          const dPlayer = Math.abs(r - start.r) + Math.abs(c - start.c);
+          const others = units.filter(u => u.owner !== playerKey);
+          const dOthers = others.length ? Math.min(...others.map(u => Math.abs(u.r - r) + Math.abs(u.c - c))) : 99;
+          const score = Math.min(dPlayer, dOthers);
+          if (score > bestScore) { bestScore = score; best = { r, c }; }
+        }
+        if (best) {
+          units.push(makeUnit("settler", best.r, best.c, ai));
+          if (DIFF[difficulty].extra) { // hard mode: they start with TWO settlers
+            const n = neighbors(best.r, best.c).find(nn => TERRAIN[map[nn.r][nn.c]].walk && !unitAt(nn.r, nn.c));
+            if (n) units.push(makeUnit("settler", n.r, n.c, ai));
+          }
+        }
+      }
+    }
+
+    function foundAICity(settler) {
+      const names = CIVS[settler.owner].cityNames;
+      const count = cities.filter(ct => ct.owner === settler.owner).length;
+      cities.push({
+        r: settler.r, c: settler.c, owner: settler.owner,
+        name: names[count % names.length],
+        pop: 1, foodBucket: 0, prodBucket: 0, producing: null, buildings: [], qi: 0,
+      });
+      units = units.filter(u => u !== settler);
+    }
+
+    // what AI cities like to build, in order, over and over
+    const AI_BUILDS = ["scout", "settler", "warrior", "monument", "settler", "warrior"];
+
+    function aiTurn() {
+      const speed = DIFF[difficulty].ai;
+      // AI units wander the world (settlers found cities when they find room)
+      for (const u of units.filter(x => x.owner !== playerKey)) {
+        u.moves = u.maxMoves;
+        if (u.type === "settler") {
+          u.age = (u.age || 0) + 1;
+          if (u.age > 2 && !allTerritory().has(u.r + "," + u.c) && !cityAt(u.r, u.c)) {
+            foundAICity(u);
+            continue;
+          }
+        }
+        const opts = neighbors(u.r, u.c).filter(n =>
+          TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c) &&
+          !(cityAt(n.r, n.c) && cityAt(n.r, n.c).owner !== u.owner));
+        if (opts.length) {
+          const n = opts[Math.floor(Math.random() * opts.length)];
+          u.r = n.r; u.c = n.c;
+        }
+      }
+      // AI cities eat, grow, and build (speed depends on difficulty)
+      for (const city of cities.filter(ct => ct.owner !== playerKey)) {
+        if (!city.producing) {
+          let pick = AI_BUILDS[(city.qi || 0) % AI_BUILDS.length];
+          if (BUILDINGS[pick] && city.buildings.includes(pick)) pick = "warrior";
+          city.producing = pick;
+          city.qi = (city.qi || 0) + 1;
+        }
+        processCity(city, speed);
+      }
+    }
 
     // ===== START THE GAME =====
     const civList = document.getElementById("civList");
@@ -1210,6 +1301,7 @@
       makeMap();
       scatterResources();
       placeSettlerOnLand();
+      setupAI(); // two rival civilizations are out there somewhere...
       reveal(units[0].r, units[0].c, 2);
       centerCameraOn(units[0].r, units[0].c);
       info.textContent = CIVS[key].leader + " says: move the settler somewhere nice, then press Found City! (Drag the map to explore)";
