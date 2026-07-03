@@ -44,7 +44,7 @@
 <body>
   <h1>⛏️ Le Diggers — Settle the Land!</h1>
   <div id="info">Click your settler, move him somewhere nice, then press Found City!</div>
-  <canvas id="game" width="1000" height="640"></canvas>
+  <canvas id="game" width="1000" height="520"></canvas>
   <div>
     <button id="foundCity" style="display:none; background:#66d9ff; color:#0a2a40;">Found City 🏛️</button>
     <button id="endTurn">End Turn ⏭️</button>
@@ -123,17 +123,30 @@
     // These turn a row+column into a pixel spot on screen (and back).
     const W = Math.sqrt(3) * HEX;   // width of a hex
     const H = HEX * 1.5;            // vertical distance between rows
-    const OX = 40, OY = 50;         // margin so the map isn't glued to the corner
+    const OX = 40, OY = 60;         // margin so the map isn't glued to the corner
+
+    // The 3D tricks: SQUASH tilts the camera down a bit,
+    // and LIFT raises land tiles up like chunky board-game pieces.
+    const SQUASH = 0.78;
+    const LIFT = { ocean: 0, coast: 4, grass: 10, plains: 10, desert: 10, forest: 10, mountain: 10 };
 
     function hexCenter(r, c) {
-      return { x: OX + c * W + (r % 2 ? W / 2 : 0), y: OY + r * H };
+      return { x: OX + c * W + (r % 2 ? W / 2 : 0), y: OY + r * H * SQUASH };
+    }
+    function liftAt(r, c) { return LIFT[map[r][c]]; }
+
+    // make a color darker (for the shaded sides of tiles)
+    function shade(color, f) {
+      const n = parseInt(color.slice(1), 16);
+      const ch = (v) => Math.round(v * f);
+      return "rgb(" + ch(n >> 16) + "," + ch((n >> 8) & 255) + "," + ch(n & 255) + ")";
     }
     function pixelToHex(x, y) {
-      // find the closest hex center to where you clicked
+      // find the closest hex TOP FACE to where you clicked (tiles are lifted!)
       let best = null, bestDist = Infinity;
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
-        const d = (p.x - x) ** 2 + (p.y - y) ** 2;
+        const d = (p.x - x) ** 2 + (p.y - liftAt(r, c) - y) ** 2;
         if (d < bestDist) { bestDist = d; best = { r, c }; }
       }
       return bestDist < HEX * HEX ? best : null;
@@ -209,16 +222,38 @@
     const canvas = document.getElementById("game");
     const ctx = canvas.getContext("2d");
 
+    function hexCorner(x, y, size, i) {
+      // corner number i of a squashed (camera-tilted) hexagon
+      const a = Math.PI / 180 * (60 * i - 30); // pointy-top hexagon
+      return { x: x + size * Math.cos(a), y: y + size * Math.sin(a) * SQUASH };
+    }
+
     function drawHex(x, y, size, fill, stroke, lineWidth) {
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
-        const a = Math.PI / 180 * (60 * i - 30); // pointy-top hexagon
-        const px = x + size * Math.cos(a), py = y + size * Math.sin(a);
-        i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+        const p = hexCorner(x, y, size, i);
+        i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
       }
       ctx.closePath();
       if (fill) { ctx.fillStyle = fill; ctx.fill(); }
       if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lineWidth || 2; ctx.stroke(); }
+    }
+
+    function drawSkirt(x, y, size, depth, color) {
+      // the chunky 3D side of a lifted tile: follow the bottom half of the
+      // hexagon, then come back the same way but lower down
+      const lower = [5, 0, 1, 2, 3]; // corners along the bottom silhouette
+      ctx.beginPath();
+      for (let k = 0; k < lower.length; k++) {
+        const p = hexCorner(x, y, size, lower[k]);
+        k === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y);
+      }
+      for (let k = lower.length - 1; k >= 0; k--) {
+        const p = hexCorner(x, y, size, lower[k]);
+        ctx.lineTo(p.x, p.y + depth);
+      }
+      ctx.closePath();
+      ctx.fillStyle = color; ctx.fill();
     }
 
     function drawDecorations(x, y, t) {
@@ -311,7 +346,7 @@
 
     function drawCity(city) {
       const p = hexCenter(city.r, city.c);
-      const x = p.x, y = p.y;
+      const x = p.x, y = p.y - liftAt(city.r, city.c);
       // shadow
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 14, 16, 5, 0, 0, Math.PI * 2); ctx.fill();
@@ -356,13 +391,13 @@
       for (const key of owned) {
         const [r, c] = key.split(",").map(Number);
         const p = hexCenter(r, c);
+        const top = p.y - liftAt(r, c);
         for (let i = 0; i < 6; i++) {
-          const a1 = Math.PI / 180 * (60 * i - 30);
-          const a2 = Math.PI / 180 * (60 * (i + 1) - 30);
-          const x1 = p.x + HEX * Math.cos(a1), y1 = p.y + HEX * Math.sin(a1);
-          const x2 = p.x + HEX * Math.cos(a2), y2 = p.y + HEX * Math.sin(a2);
-          // the tile on the other side of this edge
-          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+          const c1 = hexCorner(p.x, top, HEX, i);
+          const c2 = hexCorner(p.x, top, HEX, i + 1 === 6 ? 0 : i + 1);
+          const x1 = c1.x, y1 = c1.y, x2 = c2.x, y2 = c2.y;
+          // the tile on the other side of this edge (measured without the lift)
+          const mx = (x1 + x2) / 2, my = (y1 + y2) / 2 + liftAt(r, c);
           const beyond = pixelToHex(p.x + (mx - p.x) * 2, p.y + (my - p.y) * 2);
           const outside = !beyond || !owned.has(beyond.r + "," + beyond.c);
           if (outside) {
@@ -378,11 +413,17 @@
 
     function draw() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      // tiles with a soft white grid, like Civ 6
+      // tiles, drawn top row first so closer tiles overlap farther ones (3D!)
       for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
         const p = hexCenter(r, c);
-        drawHex(p.x, p.y, HEX, TERRAIN[map[r][c]].color, "rgba(255,255,255,0.22)", 1.5);
-        drawDecorations(p.x, p.y, map[r][c]);
+        const t = map[r][c];
+        const top = p.y - LIFT[t];
+        if (LIFT[t] > 0) {
+          // the chunky shaded side of the tile
+          drawSkirt(p.x, top, HEX, LIFT[t] + 4, shade(TERRAIN[t].color, 0.55));
+        }
+        drawHex(p.x, top, HEX, TERRAIN[t].color, "rgba(255,255,255,0.22)", 1.5);
+        drawDecorations(p.x, top, t);
       }
       // country borders go on top of the tiles
       drawBorders();
@@ -392,14 +433,15 @@
       if (selected) {
         for (const t of reachableTiles(selected)) {
           const p = hexCenter(t.r, t.c);
-          drawHex(p.x, p.y, HEX - 5, null, "#33ff88", 3.5);
+          drawHex(p.x, p.y - liftAt(t.r, t.c), HEX - 5, null, "#33ff88", 3.5);
         }
       }
       // the units (with a glowing ring on the selected one)
       for (const u of units) {
         const p = hexCenter(u.r, u.c);
-        if (u === selected) drawHex(p.x, p.y, HEX - 3, null, "#ffffff", 3);
-        drawUnit(p.x, p.y, u.type);
+        const top = p.y - liftAt(u.r, u.c);
+        if (u === selected) drawHex(p.x, top, HEX - 3, null, "#ffffff", 3);
+        drawUnit(p.x, top, u.type);
       }
     }
 
