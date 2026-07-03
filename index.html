@@ -511,11 +511,30 @@
       construction:     { name: "Construction 🏗️",     cost: 40, col: 3, req: ["masonry"], gives: "Colosseum (soon)" },
       iron_working:     { name: "Iron Working ⚔️",     cost: 40, col: 3, req: ["bronze_working"], gives: "Swordsmen → the Un Digatron (soon!)" },
       theology:         { name: "Theology ⛪",         cost: 60, col: 4, req: ["philosophy", "calendar"], gives: "unlocks the Shrine ⛩️" },
-      currency:         { name: "Currency 💰",         cost: 60, col: 4, req: ["mathematics"], gives: "Markets (soon)" },
+      currency:         { name: "Currency 💰",         cost: 60, col: 4, req: ["mathematics"], gives: "unlocks the Market 🛒" },
       engineering:      { name: "Engineering ⚙️",      cost: 60, col: 4, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
-      metal_casting:    { name: "Metal Casting 🔥",    cost: 60, col: 4, req: ["iron_working"], gives: "Forges (soon)" },
+      metal_casting:    { name: "Metal Casting 🔥",    cost: 60, col: 4, req: ["iron_working"], gives: "unlocks the Forge 🔥" },
+      civil_service:    { name: "Civil Service 📋",    cost: 90, col: 5, req: ["philosophy", "currency"], gives: "Farms give +1 food" },
+      education:        { name: "Education 🎓",        cost: 90, col: 5, req: ["theology"], gives: "unlocks the University" },
+      chivalry:         { name: "Chivalry 🏇",         cost: 90, col: 5, req: ["horseback_riding", "currency"], gives: "unlocks the Castle 🏰" },
+      machinery:        { name: "Machinery ⛓️",        cost: 90, col: 5, req: ["engineering"], gives: "Camps give +1 production" },
+      compass:          { name: "Compass 🧭",          cost: 90, col: 5, req: ["optics"], gives: "Harbors (soon)" },
+      steel:            { name: "Steel 🗡️",            cost: 120, col: 6, req: ["metal_casting"], gives: "Longswordsmen (soon!)" },
+      physics:          { name: "Physics 🍎",          cost: 120, col: 6, req: ["metal_casting", "machinery"], gives: "Trebuchets (soon)" },
     };
-    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical"];
+    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval"];
+    const ERA_NAMES = ["Ancient", "Classical", "Medieval"];
+    let currentEra = 0;
+    function eraOf() { // your era = the newest tech you know
+      let best = 0;
+      for (const k of researched) {
+        const t = TECHS[k];
+        if (!t) continue;
+        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : 2;
+        if (e > best) best = e;
+      }
+      return best;
+    }
 
     // ===== BUILDINGS AND WONDERS =====
     // yields: f food, p production, g gold, s science, cu culture
@@ -525,6 +544,11 @@
       shrine:   { name: "Shrine ⛩️",  cost: 25, tech: "theology", effect: { f: 1, g: 1, cu: 3 } },
       library:  { name: "Library 📚", cost: 45, tech: "writing", effect: { s: 3 } },
       workshop: { name: "Workshop 🔨", cost: 65, tech: "engineering", effect: { p: 2 } },
+      market:    { name: "Market 🛒",     cost: 55, tech: "currency", effect: { g: 3 } },
+      colosseum: { name: "Colosseum 🏟️", cost: 55, tech: "construction", effect: { cu: 2 } },
+      university: { name: "University 🎓", cost: 80, tech: "education", effect: { s: 4 }, special: "+1 Great Scientist point each turn" },
+      castle:    { name: "Castle 🏰",     cost: 80, tech: "chivalry", effect: {}, special: "+5 city strength when defending" },
+      forge:     { name: "Forge 🔥",      cost: 70, tech: "metal_casting", effect: { p: 2 } },
       // Adam & Meir's custom wonders
       woodhenge: { name: "Woodhenge 🪵", cost: 90, tech: "mining", wonder: true, needs: ["shrine", "library"],
                    effect: { cu: 3 }, special: "Doubles what luxury resources give ALL your cities!" },
