@@ -406,6 +406,27 @@
         shirt: "#7a2222", skin: "#c9a06a", hat: "#2e2e2e", head: "human",
         moveBonus: 0, ability: "", cityNames: [],
       },
+      // city-states: tiny friendly nations with ONE city and a gift for their friends
+      cs_turtle: {
+        name: "Turtleburg", leader: "The Turtle Council", emoji: "🐢", hidden: true, cityState: "culture",
+        primary: "#3f7f6f", secondary: "#c8e8d8", shirt: "#3f7f6f", skin: "#ffd9a6", hat: "#c8e8d8", head: "human",
+        moveBonus: 0, ability: "", cityNames: ["Turtleburg"],
+      },
+      cs_snail: {
+        name: "Snailville", leader: "Baron Slime", emoji: "🐌", hidden: true, cityState: "gold",
+        primary: "#7a6a8a", secondary: "#e8d8c8", shirt: "#7a6a8a", skin: "#ffd9a6", hat: "#e8d8c8", head: "human",
+        moveBonus: 0, ability: "", cityNames: ["Snailville"],
+      },
+      cs_frog: {
+        name: "Frogtown", leader: "Mayor Ribbit", emoji: "🐸", hidden: true, cityState: "food",
+        primary: "#5a9a3f", secondary: "#e8f8c8", shirt: "#5a9a3f", skin: "#a8d86f", hat: "#e8f8c8", head: "human",
+        moveBonus: 0, ability: "", cityNames: ["Frogtown"],
+      },
+      cs_worm: {
+        name: "Wormington", leader: "Sir Wiggles", emoji: "🪱", hidden: true, cityState: "production",
+        primary: "#9a6a4a", secondary: "#f8e0c8", shirt: "#9a6a4a", skin: "#e8a8a8", hat: "#f8e0c8", head: "human",
+        moveBonus: 0, ability: "", cityNames: ["Wormington"],
+      },
     };
 
     // ===== RESOURCES =====
@@ -750,6 +771,54 @@
       }
     }
     function campAt(r, c) { return barbCamps.find(b => b.r === r && b.c === c) || null; }
+
+    // ===== ANCIENT RUINS =====
+    // mysterious old places with treasure for whoever finds them first!
+    let ruins = new Set();
+    function scatterRuins() {
+      ruins = new Set();
+      let placed = 0, tries = 0;
+      while (placed < 10 && tries++ < 3000) {
+        const r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
+        const key = r + "," + c;
+        if (!TERRAIN[map[r][c]].walk || unitAt(r, c) || cityAt(r, c) || campAt(r, c)) continue;
+        if (resources[key] || ruins.has(key)) continue;
+        ruins.add(key);
+        placed++;
+      }
+    }
+    function checkRuin(r, c) {
+      const key = r + "," + c;
+      if (!ruins.has(key)) return;
+      ruins.delete(key);
+      terrainDirty = true;
+      const roll = Math.floor(Math.random() * 4);
+      if (roll === 0) { gold += 30; say("🏛️ Ancient ruins! You found a chest with 30 gold 💰"); }
+      else if (roll === 1) { scienceBucket += 15; say("🏛️ Ancient ruins! Dusty old scrolls give +15 science 🔬"); }
+      else if (roll === 2) { cultureBucket += 15; say("🏛️ Ancient ruins! Beautiful carvings give +15 culture 🎭"); }
+      else { reveal(r, c, 4); say("🏛️ Ancient ruins! A faded map reveals the lands around you 🗺️"); }
+    }
+
+    // ===== CITY-STATES =====
+    function setupCityStates() {
+      for (const key of Object.keys(CIVS).filter(k => CIVS[k].cityState)) {
+        let tries = 0;
+        while (tries++ < 2000) {
+          const r = Math.floor(Math.random() * ROWS), c = Math.floor(Math.random() * COLS);
+          if (!TERRAIN[map[r][c]].walk || unitAt(r, c) || cityAt(r, c) || campAt(r, c)) continue;
+          const tooClose = units.some(u => Math.abs(u.r - r) + Math.abs(u.c - c) < 8) ||
+            cities.some(ct => Math.abs(ct.r - r) + Math.abs(ct.c - c) < 6);
+          if (tooClose) continue;
+          cities.push({
+            r, c, owner: key, name: CIVS[key].cityNames[0],
+            pop: 3, foodBucket: 0, prodBucket: 0, producing: null, buildings: ["monument"], hp: 100,
+          });
+          const g = neighbors(r, c).find(n => TERRAIN[map[n.r][n.c]].walk && !unitAt(n.r, n.c));
+          if (g) units.push(makeUnit("warrior", g.r, g.c, key)); // their loyal guard
+          break;
+        }
+      }
+    }
     function raidCamp(r, c, byPlayer) {
       const camp = campAt(r, c);
       if (!camp) return;
@@ -1418,6 +1487,15 @@
           ctx.fillRect(p.x - 8, top + 5, 14, 3);
           ctx.fillRect(p.x - 6, top + 1, 10, 3);
         }
+        // ancient ruins: crumbling old columns
+        if (ruins.has(r + "," + c)) {
+          ctx.fillStyle = "#b8b2a2";
+          ctx.fillRect(p.x - 8, top - 6, 4, 13);
+          ctx.fillRect(p.x + 4, top - 2, 4, 9);
+          ctx.fillStyle = "#8f8a7c";
+          ctx.fillRect(p.x - 10, top - 9, 8, 3);
+          ctx.fillRect(p.x - 2, top + 5, 8, 2);
+        }
         const res = resources[r + "," + c];
         if (res) {
           ctx.fillStyle = "rgba(255,255,255,0.92)";
@@ -1822,6 +1900,7 @@
           selected.anim = { path, seg: 0, t: 0 }; // walk it, don't teleport!
           for (const step of path) reveal(step.r, step.c, 2); // see everything along the way
           raidCamp(hex.r, hex.c, true); // stomping a barbarian camp destroys it!
+          checkRuin(hex.r, hex.c); // and ruins hold treasure!
           info.textContent = TERRAIN[map[hex.r][hex.c]].name + " — moves left: " + selected.moves;
           if (selected.moves <= 0) selected = null;
           checkMeetings();
@@ -1840,7 +1919,7 @@
     // meeting other civilizations (they arrive in part 2!)
     function checkMeetings() {
       const others = [...new Set([...units, ...cities].map(o => o.owner))]
-        .filter(o => o && o !== playerKey && !CIVS[o].hidden);
+        .filter(o => o && o !== playerKey && o !== "barb");
       for (const o of others) {
         if (met.has(o)) continue;
         const spotted =
@@ -1848,7 +1927,12 @@
           cities.some(ct => ct.owner === o && isExplored(ct.r, ct.c));
         if (spotted) {
           met.add(o);
-          say("🤝 You met " + CIVS[o].name + ", led by " + CIVS[o].leader + "!");
+          if (CIVS[o].cityState) {
+            gold += 20;
+            say("🤝 You met the city-state of " + CIVS[o].name + " " + CIVS[o].emoji + "! They send a welcome gift of 20 gold 💰");
+          } else {
+            say("🤝 You met " + CIVS[o].name + ", led by " + CIVS[o].leader + "!");
+          }
         }
       }
     }
@@ -1977,6 +2061,19 @@
       scienceBucket += sci;
       cultureBucket += cul;
       gold += gld;
+      // 1.4 gifts from city-states you've met (Patronage makes them extra generous!)
+      const csMult = adopted.has("patronage") ? 1.5 : 1;
+      const friendlyCS = [...met].filter(o => CIVS[o].cityState && cities.some(ct => ct.owner === o));
+      for (const o of friendlyCS) {
+        const amt = Math.round(2 * csMult);
+        const kind = CIVS[o].cityState;
+        if (kind === "culture") cultureBucket += amt;
+        else if (kind === "gold") gold += amt;
+        else if (kind === "food") { const cap = capitalOf(playerKey); if (cap) cap.foodBucket += amt; }
+        else if (kind === "production") { const cap = capitalOf(playerKey); if (cap) cap.prodBucket += amt; }
+      }
+      if (adopted.has("consulates")) cultureBucket += friendlyCS.length;
+      if (adopted.has("scholasticism")) scienceBucket += friendlyCS.length;
       // 1.5 Great People points pile up
       let gs = 0, ge = 0;
       for (const city of myCities()) {
@@ -2102,6 +2199,13 @@
       for (const u of units.filter(x => x.owner !== playerKey && x.owner !== "barb")) {
         u.moves = u.maxMoves;
         if (u.hp < 100) u.hp = Math.min(100, u.hp + 10);
+        if (CIVS[u.owner].cityState) {
+          // city-state guards stay home, but they DO defend the neighborhood
+          const foe = neighbors(u.r, u.c).map(n => unitAt(n.r, n.c))
+            .find(v => v && (v.owner === "barb" || (wars.has(u.owner) && v.owner === playerKey)));
+          if (foe) battleUnits(u, foe);
+          continue;
+        }
         if (u.type === "settler") {
           u.age = (u.age || 0) + 1;
           if (u.age > 2 && !allTerritory().has(u.r + "," + u.c) && !cityAt(u.r, u.c)) {
@@ -2148,7 +2252,8 @@
         }
       }
       // AI cities eat, grow, and build (speed depends on difficulty)
-      for (const city of cities.filter(ct => ct.owner !== playerKey)) {
+      // (city-states stay cozy and small — they don't expand)
+      for (const city of cities.filter(ct => ct.owner !== playerKey && !CIVS[ct.owner].cityState)) {
         if (!city.producing) {
           let pick = AI_BUILDS[(city.qi || 0) % AI_BUILDS.length];
           if (BUILDINGS[pick] && city.buildings.includes(pick)) pick = "warrior";
@@ -2334,6 +2439,8 @@
       placeSettlerOnLand();
       setupAI(); // rival civilizations are out there somewhere...
       setupBarbarians(); // ...and so are the barbarians 💀
+      setupCityStates(); // ...and some friendly little city-states 🐢
+      scatterRuins(); // ...and treasure! 🏛️
       reveal(units[0].r, units[0].c, 2);
       centerCameraOn(units[0].r, units[0].c);
       info.textContent = CIVS[key].leader + " says: move the settler somewhere nice, then press Found City! (Drag the map to explore)";
