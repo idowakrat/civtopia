@@ -161,6 +161,9 @@
       plains:   { color: "#dcca77", walk: true,  name: "Plains 🌾" },
       desert:   { color: "#f4dc9b", walk: true,  name: "Desert 🏜️" },
       forest:   { color: "#78bd57", walk: true,  name: "Forest 🌲" },
+      jungle:   { color: "#4d9e45", walk: true,  name: "Jungle 🌴" },
+      tundra:   { color: "#c3cabb", walk: true,  name: "Tundra 🥶" },
+      snow:     { color: "#eef2f7", walk: true,  name: "Snow ❄️" },
       mountain: { color: "#a5a3ae", walk: false, name: "Mountain ⛰️ (too steep!)" },
     };
 
@@ -168,7 +171,8 @@
     const TERRAIN_YIELDS = {
       ocean: { f: 1 }, coast: { f: 1, g: 1 },
       grass: { f: 2 }, plains: { f: 1, p: 1 },
-      desert: {}, forest: { f: 1, p: 1 }, mountain: {},
+      desert: {}, forest: { f: 1, p: 1 }, jungle: { f: 2 },
+      tundra: { f: 1 }, snow: {}, mountain: {},
     };
 
     let map = [];
@@ -195,19 +199,47 @@
         }
         noise = smooth;
       }
-      // Step 3: turn numbers into terrain. Edges become ocean.
+      // Step 3: a second random layer decides how RAINY each spot is
+      let moisture = [];
+      for (let r = 0; r < ROWS; r++) {
+        moisture[r] = [];
+        for (let c = 0; c < COLS; c++) moisture[r][c] = Math.random();
+      }
+      for (let pass = 0; pass < 2; pass++) {
+        let sm = [];
+        for (let r = 0; r < ROWS; r++) {
+          sm[r] = [];
+          for (let c = 0; c < COLS; c++) {
+            let total = 0, count = 0;
+            for (let dr = -1; dr <= 1; dr++) for (let dc = -1; dc <= 1; dc++) {
+              const rr = r + dr, cc = c + dc;
+              if (rr >= 0 && rr < ROWS && cc >= 0 && cc < COLS) { total += moisture[rr][cc]; count++; }
+            }
+            sm[r][c] = total / count;
+          }
+        }
+        moisture = sm;
+      }
+      // Step 4: turn numbers into terrain — with TEMPERATURE!
+      // The middle rows are the hot equator; the top and bottom are freezing poles.
       for (let r = 0; r < ROWS; r++) {
         map[r] = [];
         for (let c = 0; c < COLS; c++) {
           const edge = Math.min(r, c, ROWS - 1 - r, COLS - 1 - c);
           const v = noise[r][c] - (edge === 0 ? 0.3 : edge === 1 ? 0.12 : 0);
+          const mid = (ROWS - 1) / 2;
+          const temp = 1 - Math.abs(r - mid) / mid + (Math.random() - 0.5) * 0.14;
+          const wet = moisture[r][c];
           let t;
           if (v < 0.42) t = "ocean";
-          else if (v < 0.48) t = "desert";
-          else if (v < 0.55) t = "plains";
-          else if (v < 0.62) t = "grass";
-          else if (v < 0.67) t = "forest";
-          else t = "mountain";
+          else if (v > 0.67) t = "mountain";
+          else if (temp < 0.16) t = "snow";
+          else if (temp < 0.34) t = wet > 0.58 ? "forest" : "tundra";
+          else if (temp > 0.72 && wet < 0.48) t = "desert";
+          else if (temp > 0.68 && wet > 0.6) t = "jungle";
+          else if (wet > 0.62) t = "forest";
+          else if (wet < 0.45) t = "plains";
+          else t = "grass";
           map[r][c] = t;
         }
       }
@@ -228,7 +260,7 @@
     // The 3D tricks: SQUASH tilts the camera down a bit,
     // and LIFT raises land tiles up like chunky board-game pieces.
     const SQUASH = 0.78;
-    const LIFT = { ocean: 0, coast: 4, grass: 10, plains: 10, desert: 10, forest: 10, mountain: 10 };
+    const LIFT = { ocean: 0, coast: 4, grass: 10, plains: 10, desert: 10, forest: 10, jungle: 10, tundra: 10, snow: 10, mountain: 10 };
 
     function hexCenter(r, c) {
       return { x: OX + c * W + (r % 2 ? W / 2 : 0), y: OY + r * H * SQUASH };
@@ -353,23 +385,32 @@
       },
     };
 
-    // ===== LUXURY RESOURCES =====
+    // ===== RESOURCES =====
+    // "luxury: true" resources are the fancy ones — Woodhenge doubles them
+    // and the Ginglewhoppers get science from them!
     const RESOURCES = {
-      darkmatter: { name: "Dark Matter 🌌", yields: { g: 1 }, desc: "+1 gold", color: "#8a4fd4" },
-      bobtonium:  { name: "Bobtonium 🔶",  yields: { p: 3, g: 1 }, desc: "+3 production, +1 gold", color: "#e07820" },
-      joetonium:  { name: "Joetonium 🟢",  yields: { f: 4, g: 1 }, desc: "+4 food, +1 gold", color: "#3fae4a" },
+      wheat:      { name: "Wheat",       icon: "🌾", yields: { f: 2 },       desc: "+2 food",                on: ["grass", "plains"], count: 9 },
+      cattle:     { name: "Cattle",      icon: "🐄", yields: { f: 2 },       desc: "+2 food",                on: ["grass"], count: 7 },
+      horses:     { name: "Horses",      icon: "🐎", yields: { p: 1, g: 1 }, desc: "+1 production, +1 gold", on: ["plains", "tundra"], count: 7 },
+      iron:       { name: "Iron",        icon: "🔩", yields: { p: 2 },       desc: "+2 production",          on: ["plains", "desert", "tundra", "snow"], count: 7 },
+      fish:       { name: "Fish",        icon: "🐟", yields: { f: 2 },       desc: "+2 food",                on: ["coast"], count: 9 },
+      bananas:    { name: "Bananas",     icon: "🍌", yields: { f: 2 },       desc: "+2 food",                on: ["jungle"], count: 6 },
+      gems:       { name: "Gems",        icon: "💎", yields: { g: 2, cu: 1 }, desc: "+2 gold, +1 culture",   on: ["jungle", "desert", "tundra"], count: 5, luxury: true },
+      goldore:    { name: "Gold",        icon: "🪙", yields: { g: 3 },       desc: "+3 gold",                on: ["desert", "plains"], count: 5, luxury: true },
+      darkmatter: { name: "Dark Matter", icon: "🌌", yields: { g: 1 },       desc: "+1 gold",                on: ["grass", "plains", "desert", "tundra", "snow"], count: 6, luxury: true },
+      bobtonium:  { name: "Bobtonium",   icon: "🔶", yields: { p: 3, g: 1 }, desc: "+3 production, +1 gold", on: ["grass", "plains", "desert", "tundra", "snow"], count: 6, luxury: true },
+      joetonium:  { name: "Joetonium",   icon: "🟢", yields: { f: 4, g: 1 }, desc: "+4 food, +1 gold",       on: ["grass", "plains", "desert", "tundra", "snow"], count: 6, luxury: true },
     };
     let resources = {};
 
     function scatterResources() {
       resources = {};
-      for (const key of Object.keys(RESOURCES)) {
+      for (const [key, res] of Object.entries(RESOURCES)) {
         let placed = 0, tries = 0;
-        while (placed < 8 && tries++ < 3000) {
+        while (placed < res.count && tries++ < 4000) {
           const r = Math.floor(Math.random() * ROWS);
           const c = Math.floor(Math.random() * COLS);
-          const t = map[r][c];
-          if (TERRAIN[t].walk && t !== "forest" && !resources[r + "," + c]) {
+          if (res.on.includes(map[r][c]) && !resources[r + "," + c]) {
             resources[r + "," + c] = key;
             placed++;
           }
@@ -500,24 +541,53 @@
     }
 
     // ===== CITY MATH =====
+    // what one tile gives (terrain + any resource sitting on it)
+    function tileYield(r, c) {
+      const ty = TERRAIN_YIELDS[map[r][c]] || {};
+      const y = { f: ty.f || 0, p: ty.p || 0, g: ty.g || 0, cu: 0 };
+      const res = resources[r + "," + c];
+      if (res) {
+        const ry = RESOURCES[res].yields;
+        y.f += ry.f || 0; y.p += ry.p || 0; y.g += ry.g || 0; y.cu += ry.cu || 0;
+      }
+      return y;
+    }
+
+    // Citizens go out and WORK the tiles! One citizen = one worked tile.
+    // They automatically pick the tastiest tiles first.
+    function workedTiles(city) {
+      const spots = neighbors(city.r, city.c)
+        .map(t => {
+          const y = tileYield(t.r, t.c);
+          return { ...t, score: y.f * 3 + y.p * 2 + y.g };
+        })
+        .sort((a, b) => b.score - a.score);
+      return spots.slice(0, city.pop);
+    }
+
     // Adds up everything a city gets each turn.
     function cityYields(city) {
-      const y = { f: 2, p: 2, g: 0, s: 0, cu: 1 };
+      const y = { f: 2, p: 2, g: 0, s: 0, cu: 1 }; // the city center itself
       const owner = city.owner;
       const hasWoodhenge = cities.some(ct => ct.owner === owner && ct.buildings.includes("woodhenge"));
       let luxCount = 0, desertCount = 0;
-      for (const t of territoryOf(city)) {
-        const ty = TERRAIN_YIELDS[map[t.r][t.c]] || {};
-        y.f += ty.f || 0; y.p += ty.p || 0; y.g += ty.g || 0;
+      const worked = workedTiles(city);
+      for (const t of worked) {
+        const ty = tileYield(t.r, t.c);
+        y.f += ty.f; y.p += ty.p; y.g += ty.g; y.cu += ty.cu;
         if (map[t.r][t.c] === "desert") desertCount++;
         const res = resources[t.r + "," + t.c];
-        if (res) {
+        if (res && RESOURCES[res].luxury) {
           luxCount++;
-          const mult = hasWoodhenge ? 2 : 1; // Woodhenge doubles luxuries!
-          const ry = RESOURCES[res].yields;
-          y.f += (ry.f || 0) * mult; y.p += (ry.p || 0) * mult; y.g += (ry.g || 0) * mult;
+          if (hasWoodhenge) { // Woodhenge doubles luxuries!
+            const ry = RESOURCES[res].yields;
+            y.f += ry.f || 0; y.p += ry.p || 0; y.g += ry.g || 0; y.cu += ry.cu || 0;
+          }
         }
       }
+      // citizens without a tile become specialists: +1 science each
+      const specialists = Math.max(0, city.pop - worked.length);
+      y.s += specialists;
       // civilization abilities!
       if (owner === "diggers") y.p += desertCount;
       if (owner === "diggers" && city.buildings.includes("workshop")) y.p += desertCount;
@@ -705,6 +775,35 @@
           ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx - 2, y + dy - 5); ctx.stroke();
           ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx + 2, y + dy - 5); ctx.stroke();
         }
+      } else if (t === "jungle") {
+        // thick dark jungle trees with droopy leaves
+        for (const [dx, dy] of [[-8, 3], [7, 0], [-1, -7], [4, 8]]) {
+          ctx.fillStyle = "#7a4a1e";
+          ctx.fillRect(x + dx - 1, y + dy + 1, 2, 5);
+          ctx.fillStyle = "#2e7a33";
+          ctx.beginPath(); ctx.arc(x + dx, y + dy - 3, 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#256829"; ctx.lineWidth = 2; ctx.lineCap = "round";
+          ctx.beginPath(); ctx.moveTo(x + dx, y + dy - 6); ctx.lineTo(x + dx - 5, y + dy - 1); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x + dx, y + dy - 6); ctx.lineTo(x + dx + 5, y + dy - 1); ctx.stroke();
+        }
+      } else if (t === "tundra") {
+        // sparse frosty grass
+        ctx.strokeStyle = "#8fa08a"; ctx.lineWidth = 2; ctx.lineCap = "round";
+        for (const [dx, dy] of [[-7, 3], [6, -3], [0, 8]]) {
+          ctx.beginPath(); ctx.moveTo(x + dx, y + dy); ctx.lineTo(x + dx - 2, y + dy - 4); ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.beginPath(); ctx.arc(x + 8, y + 6, 2, 0, Math.PI * 2); ctx.fill();
+      } else if (t === "snow") {
+        // sparkling snow drifts
+        ctx.fillStyle = "#ffffff";
+        for (const [dx, dy] of [[-8, 2], [6, -4], [1, 8], [-3, -6]]) {
+          ctx.beginPath(); ctx.arc(x + dx, y + dy, 1.8, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.strokeStyle = "#d8e2ec"; ctx.lineWidth = 2; ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x - 8, y + 4); ctx.quadraticCurveTo(x, y, x + 8, y + 4);
+        ctx.stroke();
       }
     }
 
@@ -857,25 +956,33 @@
         drawDecorations(p.x, top, t);
         const res = resources[r + "," + c];
         if (res) {
-          ctx.fillStyle = "rgba(255,255,255,0.9)";
-          ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 8, 0, Math.PI * 2); ctx.fill();
-          ctx.strokeStyle = RESOURCES[res].color; ctx.lineWidth = 2; ctx.stroke();
-          ctx.fillStyle = RESOURCES[res].color;
-          ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 4, 0, Math.PI * 2); ctx.fill();
-          if (res === "darkmatter") {
-            ctx.fillStyle = "white";
-            ctx.beginPath(); ctx.arc(p.x - 14.5, top + 8.5, 1.2, 0, Math.PI * 2); ctx.fill();
-          }
+          ctx.fillStyle = "rgba(255,255,255,0.92)";
+          ctx.beginPath(); ctx.arc(p.x - 13, top + 10, 8.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = RESOURCES[res].luxury ? "#e0a90f" : "rgba(90,90,110,0.8)";
+          ctx.lineWidth = RESOURCES[res].luxury ? 2.5 : 1.5; ctx.stroke();
+          ctx.font = "10px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(RESOURCES[res].icon, p.x - 13, top + 11);
+          ctx.textBaseline = "alphabetic";
         }
       }
       drawBorders();
       for (const city of cities) {
         if (isExplored(city.r, city.c)) drawCity(city);
       }
-      // ring around the selected city
+      // ring around the selected city + little workers on the tiles being worked
       if (selectedCity) {
         const p = hexCenter(selectedCity.r, selectedCity.c);
         drawHex(p.x, p.y - liftAt(selectedCity.r, selectedCity.c), HEX - 3, null, "#ffd966", 3);
+        ctx.font = "11px sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        for (const t of workedTiles(selectedCity)) {
+          const wp = hexCenter(t.r, t.c);
+          const wtop = wp.y - liftAt(t.r, t.c);
+          ctx.fillStyle = "rgba(255,255,255,0.9)";
+          ctx.beginPath(); ctx.arc(wp.x + 13, wtop - 8, 8, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "#e0a90f"; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.fillText("👷", wp.x + 13, wtop - 7);
+        }
+        ctx.textBaseline = "alphabetic";
       }
       if (selected) {
         for (const t of reachableTiles(selected)) {
@@ -936,8 +1043,12 @@
       const y = cityYields(city);
       const surplus = y.f - city.pop * 2;
       const growTurns = surplus > 0 ? Math.ceil((growthNeeded(city.pop) - city.foodBucket) / surplus) : "∞";
+      const worked = workedTiles(city);
+      const spec = Math.max(0, city.pop - worked.length);
       let html = "<b>🏙️ " + city.name + "</b> — 👥 " + city.pop +
-        " (grows in " + growTurns + " turns) | 🍞 +" + surplus + " 🔨 +" + y.p +
+        " (grows in " + growTurns + " turns) | 👷 working " + worked.length + " tiles" +
+        (spec ? " + " + spec + " specialist" + (spec > 1 ? "s" : "") + " 🔬" : "") +
+        " | 🍞 +" + surplus + " 🔨 +" + y.p +
         " 💰 +" + y.g + " 🔬 +" + y.s + " 🎭 +" + y.cu + "<br>";
       if (city.producing) {
         const left = Math.ceil((prodCost(city.producing) - city.prodBucket) / Math.max(1, y.p));
@@ -1119,7 +1230,8 @@
         } else {
           let text = TERRAIN[map[hex.r][hex.c]].name;
           const res = resources[hex.r + "," + hex.c];
-          if (res) text += "  •  " + RESOURCES[res].name + " (" + RESOURCES[res].desc + ")";
+          if (res) text += "  •  " + RESOURCES[res].icon + " " + RESOURCES[res].name +
+            (RESOURCES[res].luxury ? " (LUXURY! " : " (") + RESOURCES[res].desc + ")";
           info.textContent = text;
         }
       }
