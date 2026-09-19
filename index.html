@@ -138,6 +138,13 @@
     <div id="diploList" class="cardList"></div>
     <button id="diploClose">Close</button>
   </div>
+  <div id="greetPanel" class="overlay" style="display:none">
+    <h2>🤝 First Contact!</h2>
+    <canvas id="greetCanvas" width="360" height="260" style="border-radius:12px; border:3px solid #4466aa; max-width:92vw"></canvas>
+    <div id="greetName" style="font-size:1.2em; font-weight:bold; color:#ffd966; margin-top:10px"></div>
+    <div id="greetText" style="max-width:400px; text-align:center; color:#dfe4f5; font-style:italic; margin:8px 16px"></div>
+    <button id="greetClose">Nice to meet you 👋</button>
+  </div>
   <div id="policyPanel" class="overlay" style="display:none">
     <h2>🎭 Pick a Social Policy!</h2>
     <div id="policyCost" style="color:#b9c4e8; margin-bottom:8px"></div>
@@ -188,6 +195,7 @@
       tundra:   { color: "#c3cabb", walk: true,  name: "Tundra 🥶" },
       snow:     { color: "#eef2f7", walk: true,  name: "Snow ❄️" },
       mountain: { color: "#a5a3ae", walk: false, name: "Mountain ⛰️ (too steep!)" },
+      volcano:  { color: "#5a3a3a", walk: false, name: "Volcano 🌋 (too hot!)" },
     };
 
     // what each tile FEEDS your city: f = food, p = production, g = gold
@@ -195,7 +203,7 @@
       ocean: { f: 1 }, coast: { f: 1, g: 1 },
       grass: { f: 2 }, plains: { f: 1, p: 1 },
       desert: {}, forest: { f: 1, p: 1 }, jungle: { f: 2 },
-      tundra: { f: 1 }, snow: {}, mountain: {},
+      tundra: { f: 1 }, snow: {}, mountain: {}, volcano: {},
     };
 
     let map = [];
@@ -255,6 +263,7 @@
           const wet = moisture[r][c];
           let t;
           if (v < 0.42) t = "ocean";
+          else if (v > 0.72) t = "volcano"; // the very highest, hottest peaks erupt!
           else if (v > 0.67) t = "mountain";
           else if (temp < 0.16) t = "snow";
           else if (temp < 0.34) t = wet > 0.58 ? "forest" : "tundra";
@@ -283,7 +292,7 @@
     // The 3D tricks: SQUASH tilts the camera down a bit,
     // and LIFT raises land tiles up like chunky board-game pieces.
     const SQUASH = 0.78;
-    const LIFT = { ocean: 0, coast: 4, grass: 10, plains: 10, desert: 10, forest: 10, jungle: 10, tundra: 10, snow: 10, mountain: 10 };
+    const LIFT = { ocean: 0, coast: 4, grass: 10, plains: 10, desert: 10, forest: 10, jungle: 10, tundra: 10, snow: 10, mountain: 10, volcano: 10 };
 
     function hexCenter(r, c) {
       return { x: OX + c * W + (r % 2 ? W / 2 : 0), y: OY + r * H * SQUASH };
@@ -388,7 +397,7 @@
         primary: "#2b2b33", secondary: "#3fbf5a",
         shirt: "#8b93a3", skin: "#a9b2c0", hat: "#6d7585", head: "pigeon",
         moveBonus: 0,
-        ability: "Everyone is a pigeon. That is the ability.",
+        ability: "WORKS NOW: unit promotions cost 33% less XP (they learn fast — and everyone's a pigeon!)",
         cityNames: ["Coo York", "Featherton", "Crumbville", "Perch City", "Statue Square", "Breadwin"],
       },
       humanity: {
@@ -466,12 +475,13 @@
     // ===== TILE IMPROVEMENTS =====
     // Workers build these to make tiles better!
     const IMPROVEMENTS = {
-      farm:        { name: "Farm 🌾",        f: 1 },
-      animal_farm: { name: "Animal Farm 🐖", f: 1 }, // the Pig-men's farm replacement!
-      mine:        { name: "Mine ⛏️",        p: 1 },
-      plantation:  { name: "Plantation 🌱",  f: 1, g: 1 },
-      pasture:     { name: "Pasture 🐄",     f: 1 },
-      camp:        { name: "Camp 🪵",        p: 1 },
+      farm:        { name: "Farm 🌾",         f: 1 },
+      animal_farm: { name: "Animal Farm 🐖",  f: 1 }, // the Pig-men's farm replacement!
+      pigeon_nest: { name: "Pigeon Nest 🪺",  f: 1 }, // the Pigeonians' farm replacement!
+      mine:        { name: "Mine ⛏️",         p: 1 },
+      plantation:  { name: "Plantation 🌱",   f: 1, g: 1 },
+      pasture:     { name: "Pasture 🐄",      f: 1 },
+      camp:        { name: "Camp 🪵",         p: 1 },
     };
     let improvements = {}; // "row,col" -> improvement key
     let roads = new Set(); // tiles with a road — units zoom along them at half cost!
@@ -494,6 +504,7 @@
         else base = null;
       }
       if (base === "farm" && owner === "pigmen") return "animal_farm";
+      if (base === "farm" && owner === "pigeonians") return "pigeon_nest";
       return base;
     }
 
@@ -546,16 +557,17 @@
       physics:          { name: "Physics 🍎",          cost: 120, col: 6, req: ["metal_casting", "machinery"], gives: "Trebuchets (soon)" },
       gunpowder:        { name: "Gunpowder 💥",        cost: 150, col: 6, req: ["steel"], gives: "unlocks Musketmen (Boland: the Bo-bo Monk!)" },
       replaceable_parts: { name: "Replaceable Parts 🏭", cost: 220, col: 7, req: ["gunpowder", "physics"], gives: "unlocks Infantry (Humanity: the TOMA!)" },
+      flight:           { name: "Flight ✈️",           cost: 320, col: 8, req: ["replaceable_parts"], gives: "unlocks Bombers (Pigeonians: the Birdie Bomber!)" },
     };
-    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval", "Industrial"];
-    const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Industrial"];
+    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval", "Industrial", "Modern"];
+    const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Industrial", "Modern"];
     let currentEra = 0;
     function eraOf() { // your era = the newest tech you know
       let best = 0;
       for (const k of researched) {
         const t = TECHS[k];
         if (!t) continue;
-        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : t.col <= 6 ? 2 : 3;
+        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : t.col <= 6 ? 2 : t.col <= 7 ? 3 : 4;
         if (e > best) best = e;
       }
       return best;
@@ -565,6 +577,8 @@
     // yields: f food, p production, g gold, s science, cu culture
     // costs follow Civ 5's real price ratios (settlers are EXPENSIVE!)
     const BUILDINGS = {
+      // the Palace is FREE in your capital — the heart of your empire
+      palace:   { name: "Palace 🏛️", cost: 0, tech: null, free: true, effect: { p: 2, g: 2, s: 2, cu: 3 }, special: "+8 city strength, the heart of your empire" },
       monument: { name: "Monument 🗿", cost: 25, tech: null, effect: { cu: 2 } },
       shrine:   { name: "Shrine ⛩️",  cost: 25, tech: "theology", effect: { f: 1, g: 1, cu: 3 } },
       library:  { name: "Library 📚", cost: 45, tech: "writing", effect: { s: 3 } },
@@ -635,6 +649,9 @@
       infantry: { name: "Infantry", cost: 90, icon: "🎖️", strength: 36, tech: "replaceable_parts", infantry: true },
       toma: { name: "Toma", cost: 90, icon: "🗡️", strength: 38, amphibious: true,
               tech: "replaceable_parts", civ: "humanity", replaces: "infantry", infantry: true },
+      bomber: { name: "Bomber", cost: 130, icon: "✈️", strength: 20, ranged: 40, range: 4, moves: 6, tech: "flight" },
+      birdie_bomber: { name: "Birdie Bomber", cost: 130, icon: "🕊️", strength: 20, ranged: 40, range: 4, moves: 6,
+                       tech: "flight", civ: "pigeonians", replaces: "bomber", freePromo: true }, // born promoted!
     };
 
     // ===== PROMOTIONS =====
@@ -660,10 +677,14 @@
       if (PROMOTIONS[pick].move) { u.maxMoves += PROMOTIONS[pick].move; u.moves += PROMOTIONS[pick].move; }
       return pick;
     }
+    // how much XP THIS owner needs per promotion (Pigeonians get a 33% discount!)
+    function xpPerPromo(owner) {
+      return owner === "pigeonians" ? Math.round(XP_PER_PROMO * 0.67) : XP_PER_PROMO;
+    }
     // check XP after a battle — award promotions when the bar fills up
     function checkPromotions(u) {
       if (!u || UNIT_TYPES[u.type].strength === 0) return;
-      while ((u.xp || 0) >= XP_PER_PROMO * ((u.promos ? u.promos.length : 0) + 1)) {
+      while ((u.xp || 0) >= xpPerPromo(u.owner) * ((u.promos ? u.promos.length : 0) + 1)) {
         const pick = giveRandomPromotion(u);
         if (!pick) break;
         if (u.owner === playerKey) say("⭐ Your " + UNIT_TYPES[u.type].name + " earned a promotion: " + PROMOTIONS[pick].name + "!");
@@ -789,7 +810,8 @@
       }
       const u = { type, r, c, owner, moves: maxMoves, maxMoves, hp: 100, xp: 0, promos: [] };
       // Eheu's ability: every unit that can fight is born with a FREE promotion!
-      if (owner === "eheu" && def.strength > 0) giveRandomPromotion(u);
+      // Also some units (the Birdie Bomber!) come pre-promoted on their own.
+      if ((owner === "eheu" || def.freePromo) && def.strength > 0) giveRandomPromotion(u);
       return u;
     }
 
@@ -932,6 +954,7 @@
 
     function cityStrength(city) {
       let s = 8 + Math.floor(city.pop / 2);
+      if (city.buildings.includes("palace")) s += 8; // capitals are strongholds
       if (city.buildings.includes("castle")) s += 5;
       if (city.owner === playerKey && adopted.has("oligarchy")) {
         s = Math.round(s * (1 + 0.25 * (city.owner === "pigmen" ? 2 : 1)));
@@ -1103,7 +1126,7 @@
     // what one tile gives (terrain + any resource sitting on it)
     function tileYield(r, c) {
       const ty = TERRAIN_YIELDS[map[r][c]] || {};
-      const y = { f: ty.f || 0, p: ty.p || 0, g: ty.g || 0, cu: 0 };
+      const y = { f: ty.f || 0, p: ty.p || 0, g: ty.g || 0, cu: 0, s: 0 };
       const res = resources[r + "," + c];
       if (res) {
         const ry = RESOURCES[res].yields;
@@ -1113,11 +1136,15 @@
       if (imp) {
         const iy = IMPROVEMENTS[imp];
         y.f += iy.f || 0; y.p += iy.p || 0; y.g += iy.g || 0;
-        if ((imp === "farm" || imp === "animal_farm") && researched.has("civil_service")) y.f += 1; // Civ 5 farm bonus!
+        if ((imp === "farm" || imp === "animal_farm" || imp === "pigeon_nest") && researched.has("civil_service")) y.f += 1; // Civ 5 farm bonus!
         if (imp === "camp" && researched.has("machinery")) y.p += 1;
         if (imp === "animal_farm" && neighbors(r, c).some(n => cityAt(n.r, n.c))) {
           // the Pig-men's Animal Farm: extra bonuses right next to a city centre!
           y.p += 1; y.g += 1; y.cu += 1;
+        }
+        if (imp === "pigeon_nest" && neighbors(r, c).some(n => map[n.r][n.c] === "mountain" || map[n.r][n.c] === "volcano")) {
+          // the Pigeonians' Pigeon Nest: extra bonuses when perched by a mountain or volcano!
+          y.p += 1; y.g += 1; y.s += 1;
         }
         // straight from Adam & Meir's slides:
         if (res === "bobtonium") y.f += 2; // "once mined it adds +2 food"
@@ -1147,7 +1174,7 @@
       const worked = workedTiles(city);
       for (const t of worked) {
         const ty = tileYield(t.r, t.c);
-        y.f += ty.f; y.p += ty.p; y.g += ty.g; y.cu += ty.cu;
+        y.f += ty.f; y.p += ty.p; y.g += ty.g; y.cu += ty.cu; y.s += ty.s || 0;
         if (map[t.r][t.c] === "desert") desertCount++;
         const res = resources[t.r + "," + t.c];
         if (res && RESOURCES[res].luxury) {
@@ -1236,6 +1263,7 @@
       }
       for (const [key, b] of Object.entries(BUILDINGS)) {
         if (city.buildings.includes(key)) continue;
+        if (b.free) continue; // the Palace can't be built — it's granted to your capital
         if (b.tech && !researched.has(b.tech)) continue;
         if (b.wonder && wonderBuiltAnywhere(key)) continue;
         if (b.needs && !b.needs.every(n => city.buildings.includes(n))) continue;
@@ -1432,6 +1460,23 @@
         ctx.moveTo(x - 2, y - 18); ctx.lineTo(x - 8, y - 5); ctx.lineTo(x - 2, y - 7);
         ctx.lineTo(x + 2, y - 4); ctx.lineTo(x + 5, y - 6);
         ctx.closePath(); ctx.fill();
+      } else if (t === "volcano") {
+        // a dark cone with a fiery crater and a smoke puff
+        ctx.fillStyle = "#4a3232";
+        ctx.beginPath();
+        ctx.moveTo(x, y - 17); ctx.lineTo(x - 16, y + 12); ctx.lineTo(x + 16, y + 12);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#372525"; // shadow side
+        ctx.beginPath();
+        ctx.moveTo(x, y - 17); ctx.lineTo(x + 16, y + 12); ctx.lineTo(x + 4, y + 12);
+        ctx.closePath(); ctx.fill();
+        ctx.fillStyle = "#ff7a1e"; // glowing crater
+        ctx.beginPath(); ctx.ellipse(x, y - 15, 5, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#ffd21f"; ctx.lineWidth = 2; ctx.lineCap = "round"; // lava dribbles
+        ctx.beginPath(); ctx.moveTo(x - 2, y - 14); ctx.lineTo(x - 5, y - 4); ctx.stroke();
+        ctx.fillStyle = "rgba(120,110,110,0.6)"; // smoke
+        ctx.beginPath(); ctx.arc(x + 2, y - 21, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x - 3, y - 24, 3, 0, Math.PI * 2); ctx.fill();
       } else if (t === "ocean" || t === "coast") {
         ctx.strokeStyle = t === "coast" ? "#a8e6f2" : "#5b93d6";
         ctx.lineWidth = 2; ctx.lineCap = "round";
@@ -1574,6 +1619,11 @@
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(x - 4, y + 4.5); ctx.lineTo(x + 4, y - 4.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(x - 3, y + 3.5, 1.6, 0, Math.PI * 2); ctx.fill();
+      } else if (type === "bomber" || type === "birdie_bomber") { // a little plane
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(x, y - 4.5); ctx.lineTo(x, y + 4.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - 4.5, y - 0.5); ctx.lineTo(x + 4.5, y - 0.5); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x - 2.5, y + 4); ctx.lineTo(x + 2.5, y + 4); ctx.stroke();
       } else { // scout binoculars
         ctx.lineWidth = 1.8;
         ctx.beginPath(); ctx.arc(x - 2.8, y, 2.6, 0, Math.PI * 2); ctx.stroke();
@@ -1748,6 +1798,32 @@
         ctx.beginPath(); ctx.moveTo(x + 11, y + 6); ctx.lineTo(x + 19, y - 19); ctx.stroke();
         ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 16, y + 5); ctx.stroke();
+      } else if (type === "bomber" || type === "birdie_bomber") {
+        // an aeroplane seen from above, with a shadow beneath it (it's flying!)
+        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.beginPath(); ctx.ellipse(x, y + 16, 9, 3, 0, 0, Math.PI * 2); ctx.fill();
+        const body = type === "birdie_bomber" ? "#8b93a3" : civ.shirt;
+        ctx.fillStyle = body; // fuselage
+        ctx.beginPath(); ctx.ellipse(x, y - 2, 4, 13, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = shade(body, 0.75); // wings
+        ctx.beginPath();
+        ctx.moveTo(x - 16, y); ctx.lineTo(x + 16, y); ctx.lineTo(x + 4, y + 5); ctx.lineTo(x - 4, y + 5);
+        ctx.closePath(); ctx.fill();
+        ctx.beginPath(); // tail fins
+        ctx.moveTo(x - 7, y - 11); ctx.lineTo(x + 7, y - 11); ctx.lineTo(x + 3, y - 7); ctx.lineTo(x - 3, y - 7);
+        ctx.closePath(); ctx.fill();
+        if (type === "birdie_bomber") {
+          // it's a giant armoured PIGEON! beak at the nose, wing feathers
+          ctx.fillStyle = "#f2a531";
+          ctx.beginPath(); ctx.moveTo(x - 2, y - 15); ctx.lineTo(x + 2, y - 15); ctx.lineTo(x, y - 20); ctx.closePath(); ctx.fill();
+          ctx.fillStyle = "#3fbf5a"; // shimmery green neck ring
+          ctx.beginPath(); ctx.ellipse(x, y - 9, 3.5, 2, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#222";
+          ctx.beginPath(); ctx.arc(x - 1.5, y - 12, 1, 0, Math.PI * 2); ctx.fill();
+        } else {
+          ctx.fillStyle = "#3a3a44"; // cockpit
+          ctx.beginPath(); ctx.arc(x, y - 6, 2.2, 0, Math.PI * 2); ctx.fill();
+        }
       } else {
         // the scout, striding with the civilization's flag
         drawFigure(x, y, 1, civ, walkPhase);
@@ -1788,6 +1864,17 @@
       ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#7a4a1e";
       ctx.fillRect(x - 8, y + 5, 5, 8);
+      // the capital shows off a golden-domed Palace
+      if (city.buildings.includes("palace")) {
+        ctx.fillStyle = "#d8cbb0";
+        ctx.fillRect(x - 6, y - 6, 12, 6);
+        ctx.fillStyle = "#ffd21f"; // golden dome
+        ctx.beginPath(); ctx.arc(x, y - 6, 6, Math.PI, 0); ctx.fill();
+        ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(x, y - 6, 6, Math.PI, 0); ctx.stroke();
+        ctx.fillStyle = "#b8860b"; // finial
+        ctx.fillRect(x - 0.5, y - 14, 1.5, 3);
+      }
       // bigger cities get more buildings!
       if (city.pop >= 4) {
         ctx.fillStyle = "#ddd0b0";
@@ -1921,6 +2008,14 @@
           ctx.strokeRect(p.x - 6, top + 1, 12, 6);
           ctx.fillStyle = "#f5a8c0";
           ctx.beginPath(); ctx.ellipse(p.x, top + 4, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
+        } else if (imp === "pigeon_nest") {
+          // a twiggy nest with speckled eggs
+          ctx.fillStyle = "#8a6a3a";
+          ctx.beginPath(); ctx.ellipse(p.x, top + 5, 9, 5, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#5f4522";
+          ctx.beginPath(); ctx.ellipse(p.x, top + 4, 6, 3, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#f0ece0";
+          for (const dx of [-2.5, 1.5]) { ctx.beginPath(); ctx.ellipse(p.x + dx, top + 4, 1.8, 2.3, 0, 0, Math.PI * 2); ctx.fill(); }
         } else if (imp === "mine") {
           ctx.fillStyle = "#4a4038";
           ctx.beginPath(); ctx.arc(p.x + 6, top + 4, 6, Math.PI, 0); ctx.fill();
@@ -2354,6 +2449,10 @@
     document.getElementById("diploClose").addEventListener("click", () => {
       document.getElementById("diploPanel").style.display = "none";
     });
+    document.getElementById("greetClose").addEventListener("click", () => {
+      document.getElementById("greetPanel").style.display = "none";
+      showNextGreeting(); // any other new neighbours waiting to say hello?
+    });
 
     techBtn.addEventListener("click", renderTechPanel);
     policyBtn.addEventListener("click", renderPolicyPanel);
@@ -2542,9 +2641,54 @@
             say("🤝 You met the city-state of " + CIVS[o].name + " " + CIVS[o].emoji + "! They send a welcome gift of 20 gold 💰");
           } else {
             say("🤝 You met " + CIVS[o].name + ", led by " + CIVS[o].leader + "!");
+            greetQueue.push(o); // show their leader greeting you face to face!
           }
         }
       }
+      if (greetQueue.length && !greetShowing) showNextGreeting();
+    }
+
+    // ===== FIRST CONTACT: the leader greets you in a room =====
+    const greetQueue = [];
+    let greetShowing = false;
+    const GREETINGS = {
+      diggers: "Well met! There's fine digging to be done in these lands. Stay out of my desert.",
+      ginglewhoppers: "Ah, a visitor! Mind the bubbling flasks. Science waits for no one — gingly-ho!",
+      boland: "Peace be with you, traveller. My fists are calm... for now.",
+      pigmen: "Snort! You stand before Pigathy. Bring no wolves and we shall get along.",
+      pigeonians: "Coo. Coo coo. (Dave nods at you knowingly.)",
+      humanity: "Behold Adam the Great! History will remember whether you were friend or foe.",
+      skooter: "Yo! King Meir here. Race you to the next era — last one there's a rusty scooter!",
+      eheu: "Eheu... eheu... you have found us. Join our mission, or be prayed for.",
+    };
+    function showNextGreeting() {
+      const o = greetQueue.shift();
+      if (!o) { greetShowing = false; return; }
+      greetShowing = true;
+      const civ = CIVS[o];
+      // paint the leader BIG inside a room
+      const gc = document.getElementById("greetCanvas").getContext("2d");
+      const W = 360, H = 260;
+      gc.clearRect(0, 0, W, H);
+      // room: back wall, floor, a window showing their civ colors
+      gc.fillStyle = "#2a2438"; gc.fillRect(0, 0, W, H);
+      gc.fillStyle = "#3a3450"; gc.fillRect(0, H * 0.72, W, H * 0.28); // floor
+      const win = gc.createLinearGradient(0, 40, 0, 150);
+      win.addColorStop(0, civ.primary); win.addColorStop(1, shade(civ.primary, 0.5));
+      gc.fillStyle = win; gc.fillRect(W - 96, 34, 64, 96); // window
+      gc.strokeStyle = "#1a1626"; gc.lineWidth = 4; gc.strokeRect(W - 96, 34, 64, 96);
+      gc.beginPath(); gc.moveTo(W - 64, 34); gc.lineTo(W - 64, 130); gc.moveTo(W - 96, 82); gc.lineTo(W - 32, 82); gc.stroke();
+      // a hanging banner in their colors
+      gc.fillStyle = civ.secondary; gc.fillRect(48, 24, 26, 60);
+      gc.fillStyle = civ.primary; gc.fillRect(52, 28, 18, 52);
+      // the leader portrait, drawn large and centered
+      gc.save();
+      gc.translate(W / 2 - 70, 70); gc.scale(1.9, 1.9);
+      drawLeader(gc, o, 74, 74);
+      gc.restore();
+      document.getElementById("greetName").textContent = civ.emoji + " " + civ.leader + " of " + civ.name;
+      document.getElementById("greetText").textContent = "“" + (GREETINGS[o] || "Greetings, neighbour.") + "”";
+      document.getElementById("greetPanel").style.display = "flex";
     }
 
     let drag = null;
@@ -2608,17 +2752,19 @@
       }
       const names = CIVS[playerKey].cityNames;
       const count = myCities().length;
+      const isCapital = count === 0; // your very first city!
       const city = {
         r: settler.r, c: settler.c, owner: playerKey,
         name: names[count % names.length],
-        pop: 1, foodBucket: 0, prodBucket: 0, producing: null, buildings: [], hp: 100,
+        pop: 1, foodBucket: 0, prodBucket: 0, producing: null,
+        buildings: isCapital ? ["palace"] : [], hp: 100,
       };
       cities.push(city);
       reveal(city.r, city.c, 2);
       units = units.filter(u => u !== settler);
       selected = null;
       selectedCity = city; // open the city panel so you can pick production!
-      say("🎉 " + city.name + " founded! Pick what it should build.");
+      say("🎉 " + city.name + " founded!" + (isCapital ? " Your capital gets a free Palace 🏛️!" : " Pick what it should build."));
       showMessages();
       updateButtons();
       updateTopbar();
@@ -2872,7 +3018,8 @@
       cities.push({
         r: settler.r, c: settler.c, owner: settler.owner,
         name: names[count % names.length],
-        pop: 1, foodBucket: 0, prodBucket: 0, producing: null, buildings: [], qi: 0, hp: 100,
+        pop: 1, foodBucket: 0, prodBucket: 0, producing: null,
+        buildings: count === 0 ? ["palace"] : [], qi: 0, hp: 100, // AI capitals get a Palace too
       });
       units = units.filter(u => u !== settler);
     }
@@ -2961,6 +3108,8 @@
       grad.addColorStop(1, shade(civ.primary, 0.45));
       g.fillStyle = grad;
       g.fillRect(0, 0, w, h);
+      drawLeaderBackground(g, key, w, h); // a scene suited to each leader
+      g.save(); g.beginPath(); g.rect(0, 0, w, h); g.clip(); // keep art inside the card
 
       function shoulders(color) {
         g.fillStyle = color;
@@ -3107,7 +3256,70 @@
         g.beginPath(); g.moveTo(cx + 20, 8); g.lineTo(cx + 20, 20); g.stroke();
         g.beginPath(); g.moveTo(cx + 16, 12); g.lineTo(cx + 24, 12); g.stroke();
       }
+      g.restore(); // done clipping
     }
+
+    // a little scene behind each leader, matching who they are
+    function drawLeaderBackground(g, key, w, h) {
+      g.save();
+      if (key === "diggers") { // a sandy desert dig site with dunes
+        g.fillStyle = "rgba(244,220,155,0.5)";
+        g.beginPath(); g.moveTo(0, h); g.lineTo(0, h * 0.6);
+        g.quadraticCurveTo(w * 0.3, h * 0.5, w * 0.6, h * 0.62);
+        g.quadraticCurveTo(w * 0.85, h * 0.7, w, h * 0.58); g.lineTo(w, h); g.closePath(); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.55)"; // sun
+        g.beginPath(); g.arc(w * 0.82, h * 0.22, 9, 0, Math.PI * 2); g.fill();
+      } else if (key === "ginglewhoppers") { // a lab: bubbling flasks & sparks
+        g.fillStyle = "rgba(255,255,255,0.16)";
+        for (const bx of [w * 0.15, w * 0.85]) {
+          g.beginPath(); g.moveTo(bx - 5, h * 0.2); g.lineTo(bx - 5, h * 0.35);
+          g.lineTo(bx - 9, h * 0.5); g.lineTo(bx + 9, h * 0.5); g.lineTo(bx + 5, h * 0.35);
+          g.lineTo(bx + 5, h * 0.2); g.closePath(); g.fill();
+        }
+        g.fillStyle = "rgba(120,220,120,0.4)";
+        g.beginPath(); g.arc(w * 0.15, h * 0.46, 4, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(w * 0.85, h * 0.46, 4, 0, Math.PI * 2); g.fill();
+      } else if (key === "boland") { // serene mountains & a rising sun
+        g.fillStyle = "rgba(255,255,255,0.5)";
+        g.beginPath(); g.arc(cxOf(w), h * 0.3, 12, 0, Math.PI * 2); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.28)";
+        g.beginPath(); g.moveTo(0, h); g.lineTo(w * 0.3, h * 0.5); g.lineTo(w * 0.55, h); g.closePath(); g.fill();
+        g.beginPath(); g.moveTo(w * 0.45, h); g.lineTo(w * 0.72, h * 0.55); g.lineTo(w, h); g.closePath(); g.fill();
+      } else if (key === "pigmen") { // a muddy farm with a fence
+        g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(0, h * 0.7); g.lineTo(w, h * 0.7); g.stroke();
+        for (let fx = w * 0.12; fx < w; fx += w * 0.22) {
+          g.beginPath(); g.moveTo(fx, h * 0.58); g.lineTo(fx, h * 0.82); g.stroke();
+        }
+      } else if (key === "pigeonians") { // a city skyline with pigeons flying
+        g.fillStyle = "rgba(255,255,255,0.14)";
+        for (let bx = 0; bx < w; bx += 18) g.fillRect(bx, h * 0.55 - (bx % 36 ? 12 : 24), 13, h);
+        g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 1.5;
+        for (const [px, py] of [[w * 0.25, h * 0.25], [w * 0.4, h * 0.18], [w * 0.7, h * 0.28]]) {
+          g.beginPath(); g.arc(px - 3, py, 3, Math.PI, 0); g.arc(px + 3, py, 3, Math.PI, 0); g.stroke();
+        }
+      } else if (key === "humanity") { // a triumphant golden sunburst
+        g.strokeStyle = "rgba(255,210,31,0.35)"; g.lineWidth = 2;
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 6) {
+          g.beginPath(); g.moveTo(cxOf(w), h * 0.35);
+          g.lineTo(cxOf(w) + Math.cos(a) * 60, h * 0.35 + Math.sin(a) * 60); g.stroke();
+        }
+      } else if (key === "skooter") { // a road with a dashed line, zooming past
+        g.fillStyle = "rgba(0,0,0,0.18)";
+        g.fillRect(0, h * 0.72, w, h * 0.28);
+        g.strokeStyle = "rgba(255,255,255,0.6)"; g.lineWidth = 3; g.setLineDash([10, 8]);
+        g.beginPath(); g.moveTo(0, h * 0.86); g.lineTo(w, h * 0.86); g.stroke();
+        g.setLineDash([]);
+      } else if (key === "eheu") { // a solemn cathedral arch with candles
+        g.fillStyle = "rgba(255,255,255,0.12)";
+        g.beginPath(); g.moveTo(w * 0.3, h); g.lineTo(w * 0.3, h * 0.4);
+        g.quadraticCurveTo(cxOf(w), h * 0.15, w * 0.7, h * 0.4); g.lineTo(w * 0.7, h); g.closePath(); g.fill();
+        g.fillStyle = "rgba(255,220,120,0.7)";
+        for (const cxp of [w * 0.2, w * 0.8]) { g.beginPath(); g.arc(cxp, h * 0.55, 2.5, 0, Math.PI * 2); g.fill(); }
+      }
+      g.restore();
+    }
+    function cxOf(w) { return w / 2; }
 
     // ===== START THE GAME =====
     const civList = document.getElementById("civList");
