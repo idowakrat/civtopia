@@ -407,6 +407,14 @@
         ability: "WORKS NOW: +1 movement for ALL units, +2 for infantry!",
         cityNames: ["Skoot City", "Helmet Heights", "Kickflip Bay", "Rolling Meadows", "Meirville", "Two Wheels"],
       },
+      eheu: {
+        name: "The Eheu Missionaries", leader: "Eheu", emoji: "🙌",
+        primary: "#7a3fd4", secondary: "#ffffff",
+        shirt: "#6a3aa8", skin: "#c7b89a", hat: "#e8e2f0", head: "deformed",
+        moveBonus: 0,
+        ability: "WORKS NOW: every unit you build is born with a FREE promotion!",
+        cityNames: ["Eheu Prime", "Missionaria", "Sackville", "Woe Town", "Lamentport", "Grimhold", "Eheuville"],
+      },
       // not a real civilization — just lives in the CIVS list for colors & drawing
       barb: {
         name: "Barbarians", leader: "Nobody", emoji: "💀", hidden: true,
@@ -532,7 +540,7 @@
       civil_service:    { name: "Civil Service 📋",    cost: 90, col: 5, req: ["philosophy", "currency"], gives: "Farms give +1 food" },
       education:        { name: "Education 🎓",        cost: 90, col: 5, req: ["theology"], gives: "unlocks the University" },
       chivalry:         { name: "Chivalry 🏇",         cost: 90, col: 5, req: ["horseback_riding", "currency"], gives: "unlocks the Castle 🏰 and Knights (Ginglewhoppers: the Gingleraider!)" },
-      machinery:        { name: "Machinery ⛓️",        cost: 90, col: 5, req: ["engineering"], gives: "Camps give +1 production" },
+      machinery:        { name: "Machinery ⛓️",        cost: 90, col: 5, req: ["engineering"], gives: "Camps +1 production, unlocks Crossbowmen (Eheu: the Eheu Missionary!)" },
       compass:          { name: "Compass 🧭",          cost: 90, col: 5, req: ["optics"], gives: "Harbors (soon)" },
       steel:            { name: "Steel 🗡️",            cost: 120, col: 6, req: ["metal_casting"], gives: "leads to Gunpowder" },
       physics:          { name: "Physics 🍎",          cost: 120, col: 6, req: ["metal_casting", "machinery"], gives: "Trebuchets (soon)" },
@@ -586,10 +594,16 @@
     const REPLACEMENTS = {
       ginglewhoppers: { monument: { name: "Divine Statue 🗿✨", effect: { cu: 3, f: 2 } } },
       diggers: { workshop: { name: "Une Digged ⛏️🔨", effect: { p: 2 } } }, // + desert bonus below!
+      // the Eheu Centre of Amenities: +2 happiness, +1 culture, and units built here start with +15 XP!
+      eheu: { colosseum: { name: "Eheu Centre of Amenities 🙏", effect: { cu: 1, happy: 2 }, xpBonus: 15 } },
     };
     function bInfo(key, owner) {
       const rep = REPLACEMENTS[owner] && REPLACEMENTS[owner][key];
-      return { name: rep ? rep.name : BUILDINGS[key].name, effect: rep ? rep.effect : BUILDINGS[key].effect };
+      return {
+        name: rep ? rep.name : BUILDINGS[key].name,
+        effect: rep ? rep.effect : BUILDINGS[key].effect,
+        xpBonus: (rep && rep.xpBonus) || 0,
+      };
     }
 
     // strength 0 means "can't fight" — those units get CAPTURED instead!
@@ -609,6 +623,9 @@
                    tech: "iron_working", civ: "diggers", replaces: "swordsman" },
       pig_master: { name: "Pig Master", cost: 40, icon: "🐖", strength: 14, moves: 3,
                     civ: "pigmen", replaces: "swordsman" }, // no Iron Working needed, and +3 moves!
+      crossbowman: { name: "Crossbowman", cost: 50, icon: "🎯", strength: 13, ranged: 14, range: 2, tech: "machinery" },
+      eheu_missionary: { name: "Eheu Missionary", cost: 50, icon: "🙌", strength: 13, ranged: 14, range: 3,
+                         tech: "machinery", civ: "eheu", replaces: "crossbowman" }, // +1 range = shoots 3 tiles!
       knight: { name: "Knight", cost: 55, icon: "🐴", strength: 20, moves: 4, tech: "chivalry" },
       gingleraider: { name: "Gingleraider", cost: 55, icon: "🚲", strength: 11, ranged: 18, moves: 5,
                       tech: "chivalry", civ: "ginglewhoppers", replaces: "knight" },
@@ -619,6 +636,54 @@
       toma: { name: "Toma", cost: 90, icon: "🗡️", strength: 38, amphibious: true,
               tech: "replaceable_parts", civ: "humanity", replaces: "infantry", infantry: true },
     };
+
+    // ===== PROMOTIONS =====
+    // Units earn XP from battle. Enough XP = a free promotion that makes them tougher!
+    // (Eheu units are BORN with a free promotion, and units built in an Eheu
+    //  Centre of Amenities start with +15 XP.)
+    const PROMOTIONS = {
+      drill:     { name: "Drill 🎯 (+15% attack)", attack: 1.15 },
+      cover:     { name: "Cover 🛡️ (+25% defense)", defense: 1.25 },
+      morale:    { name: "Morale 🎺 (+10% strength)", attack: 1.1, defense: 1.1 },
+      medic:     { name: "Medic ⛑️ (+15 healing/turn)", heal: 15 },
+      march:     { name: "March 🥾 (+1 movement)", move: 1 },
+    };
+    const PROMO_KEYS = Object.keys(PROMOTIONS);
+    const XP_PER_PROMO = 15; // 1st promo at 15xp, 2nd at 30, etc.
+
+    function giveRandomPromotion(u) {
+      const owned = u.promos || (u.promos = []);
+      const choices = PROMO_KEYS.filter(k => !owned.includes(k));
+      if (!choices.length) return;
+      const pick = choices[Math.floor(Math.random() * choices.length)];
+      owned.push(pick);
+      if (PROMOTIONS[pick].move) { u.maxMoves += PROMOTIONS[pick].move; u.moves += PROMOTIONS[pick].move; }
+      return pick;
+    }
+    // check XP after a battle — award promotions when the bar fills up
+    function checkPromotions(u) {
+      if (!u || UNIT_TYPES[u.type].strength === 0) return;
+      while ((u.xp || 0) >= XP_PER_PROMO * ((u.promos ? u.promos.length : 0) + 1)) {
+        const pick = giveRandomPromotion(u);
+        if (!pick) break;
+        if (u.owner === playerKey) say("⭐ Your " + UNIT_TYPES[u.type].name + " earned a promotion: " + PROMOTIONS[pick].name + "!");
+      }
+    }
+    // a unit's real strength, boosted by its promotions
+    function unitStrength(u, mode) {
+      let s = UNIT_TYPES[u.type].strength;
+      for (const p of (u.promos || [])) {
+        const pr = PROMOTIONS[p];
+        if (mode === "attack" && pr.attack) s *= pr.attack;
+        if (mode === "defense" && pr.defense) s *= pr.defense;
+      }
+      return s;
+    }
+    function unitRangedStrength(u) {
+      let s = UNIT_TYPES[u.type].ranged;
+      for (const p of (u.promos || [])) if (PROMOTIONS[p].attack) s *= PROMOTIONS[p].attack;
+      return s;
+    }
 
     // ===== SOCIAL POLICIES =====
     // Real Civ 5 policy BRANCHES! First adopt a branch's opener,
@@ -722,7 +787,10 @@
         if (adopted.has("honor")) maxMoves += 1 * pmult;
         if (adopted.has("military_tradition")) maxMoves += 1 * pmult;
       }
-      return { type, r, c, owner, moves: maxMoves, maxMoves, hp: 100 };
+      const u = { type, r, c, owner, moves: maxMoves, maxMoves, hp: 100, xp: 0, promos: [] };
+      // Eheu's ability: every unit that can fight is born with a FREE promotion!
+      if (owner === "eheu" && def.strength > 0) giveRandomPromotion(u);
+      return u;
     }
 
     function placeSettlerOnLand() {
@@ -879,25 +947,32 @@
         def.moves = 0;
         return { captured: true };
       }
-      const aStr = UNIT_TYPES[att.type].strength;
+      const aStr = unitStrength(att, "attack");
       // the bo-bo monk ignores ALL penalties from terrain (straight from the slide!)
       const terrain = UNIT_TYPES[att.type].ignoreTerrain ? 1 : defenseBonus(def.r, def.c);
-      const dStr = UNIT_TYPES[def.type].strength * terrain;
+      const dStr = unitStrength(def, "defense") * terrain;
       const ratio = aStr / dStr;
       def.hp -= Math.round(28 * ratio * (0.8 + Math.random() * 0.4));
       att.hp -= Math.round(28 / ratio * (0.8 + Math.random() * 0.4));
       if (def.hp <= 0 && att.hp <= 0) att.hp = 1; // someone has to win
+      // both sides learn from battle (winner earns more)
+      att.xp = (att.xp || 0) + (def.hp <= 0 ? 5 : 3);
+      def.xp = (def.xp || 0) + (att.hp <= 0 ? 5 : 2);
       const result = { defDead: def.hp <= 0, attDead: att.hp <= 0 };
+      if (att.hp > 0) checkPromotions(att);
+      if (def.hp > 0) checkPromotions(def);
       units = units.filter(u => u.hp > 0);
       return result;
     }
 
     function battleCity(att, city) {
-      const aStr = UNIT_TYPES[att.type].strength;
+      const aStr = unitStrength(att, "attack");
       const dStr = cityStrength(city);
       const ratio = aStr / dStr;
       city.hp -= Math.round(28 * ratio * (0.8 + Math.random() * 0.4));
       att.hp -= Math.round(20 / ratio * (0.8 + Math.random() * 0.4));
+      att.xp = (att.xp || 0) + 4;
+      if (att.hp > 0) checkPromotions(att);
       if (att.hp <= 0) { units = units.filter(u => u !== att); return { attDead: true }; }
       if (city.hp <= 0) {
         if (att.owner === "barb") { city.hp = 1; return {}; } // barbarians can't run a city
@@ -1224,10 +1299,17 @@
                 return resources[k] === "darkmatter" && improvements[k];
               });
               if (hasDark) newUnit.darkHeal = true;
+              // buildings that grant XP (the Eheu Centre of Amenities gives +15!)
+              let xpGift = 0;
+              for (const b of city.buildings) xpGift += bInfo(b, city.owner).xpBonus || 0;
+              if (xpGift && UNIT_TYPES[item].strength > 0) {
+                newUnit.xp += xpGift;
+                checkPromotions(newUnit);
+              }
               units.push(newUnit);
               city.prodBucket -= cost;
               city.producing = null;
-              if (city.owner === playerKey) say("🛠️ " + city.name + " finished a " + UNIT_TYPES[item].name + (hasDark ? " (Dark Matter powered! 🌌)" : "") + "!");
+              if (city.owner === playerKey) say("🛠️ " + city.name + " finished a " + UNIT_TYPES[item].name + (hasDark ? " (Dark Matter powered! 🌌)" : "") + (xpGift ? " (+" + xpGift + " XP! 🙏)" : "") + "!");
             } // no spot? production waits patiently
           } else {
             city.buildings.push(item);
@@ -1437,6 +1519,15 @@
         ctx.beginPath(); ctx.moveTo(x + 6 * s, y - 9 * s); ctx.lineTo(x + 13 * s, y - 7 * s); ctx.lineTo(x + 6 * s, y - 5 * s); ctx.closePath(); ctx.fill();
         ctx.fillStyle = "#222";
         ctx.beginPath(); ctx.arc(x + 3 * s, y - 10 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+      } else if (civ.head === "deformed") {
+        // the Eheu wear a pale hood, with a lopsided, crooked face
+        ctx.fillStyle = civ.hat;
+        ctx.beginPath(); ctx.arc(x, y - 9 * s, 8 * s, Math.PI, 0.15); ctx.fill();
+        ctx.fillStyle = "#3a2a4a"; // uneven, droopy eyes
+        ctx.beginPath(); ctx.arc(x - 3 * s, y - 7 * s, 1.5 * s, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(x + 3.5 * s, y - 5 * s, 1 * s, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = "#7a5a4a"; ctx.lineWidth = 1.4; ctx.lineCap = "round"; // crooked frown
+        ctx.beginPath(); ctx.moveTo(x - 3 * s, y - 1 * s); ctx.lineTo(x + 2 * s, y - 2.5 * s); ctx.stroke();
       } else {
         ctx.fillStyle = civ.hat;
         ctx.beginPath(); ctx.arc(x, y - 10 * s, 7.5 * s, Math.PI, 0); ctx.fill();
@@ -1472,6 +1563,10 @@
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(x, y - 5.5); ctx.lineTo(x, y + 5); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x - 3.5, y + 1.5); ctx.lineTo(x + 3.5, y + 1.5); ctx.stroke();
+      } else if (type === "crossbowman" || type === "eheu_missionary") { // crossbow
+        ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(x - 4.5, y - 1); ctx.lineTo(x + 4.5, y - 1); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y - 3); ctx.lineTo(x, y + 4.5); ctx.stroke();
       } else if (type === "knight") { // horseshoe
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.arc(x, y, 4, Math.PI * 0.85, Math.PI * 2.15); ctx.stroke();
@@ -1545,6 +1640,20 @@
         ctx.beginPath(); ctx.arc(x + 12, y - 2, 9, -Math.PI / 2.6, Math.PI / 2.6); ctx.stroke();
         ctx.strokeStyle = "#e8e8e8"; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(x + 14.5, y - 10); ctx.lineTo(x + 14.5, y + 6); ctx.stroke();
+      } else if (type === "crossbowman" || type === "eheu_missionary") {
+        drawFigure(x, y, 1, civ, walkPhase);
+        // a crossbow held level: a horizontal bar with a stock
+        ctx.strokeStyle = "#6a4a2a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(x + 4, y - 2); ctx.lineTo(x + 18, y - 2); ctx.stroke();
+        ctx.strokeStyle = "#9a7a4a"; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.arc(x + 16, y - 2, 5, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+        ctx.strokeStyle = "#e8e8e8"; ctx.lineWidth = 1.2;
+        ctx.beginPath(); ctx.moveTo(x + 16, y - 7); ctx.lineTo(x + 16, y + 3); ctx.stroke();
+        if (type === "eheu_missionary") { // raising a holy staff to bless the shot
+          ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.moveTo(x - 11, y - 16); ctx.lineTo(x - 11, y + 8); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x - 15, y - 12); ctx.lineTo(x - 7, y - 12); ctx.stroke();
+        }
       } else if (type === "swordsman" || type === "digatron" || type === "pig_master") {
         drawFigure(x, y, 1, civ, walkPhase);
         // shining sword
@@ -1934,6 +2043,10 @@
           ctx.fillStyle = u.hp > 50 ? "#3fbf5a" : u.hp > 25 ? "#e0a90f" : "#d43a2b";
           ctx.fillRect(x - 11, y - 47, 22 * u.hp / 100, 4);
         }
+        if (u.promos && u.promos.length) { // gold stars = promotions earned!
+          ctx.fillStyle = "#ffd21f"; ctx.font = "8px sans-serif"; ctx.textAlign = "left";
+          ctx.fillText("⭐".repeat(Math.min(u.promos.length, 3)), x + 8, y - 38);
+        }
       }
       ctx.restore();
     }
@@ -2260,16 +2373,18 @@
 
     // arrows fly! ranged units shoot without getting hit back
     function rangedStrike(att, targetR, targetC) {
-      const rStr = UNIT_TYPES[att.type].ranged;
+      const rStr = unitRangedStrength(att);
       const defUnit = unitAt(targetR, targetC);
       const town = cityAt(targetR, targetC);
       declareWar(defUnit ? defUnit.owner : town.owner);
+      att.xp = (att.xp || 0) + 3;
+      checkPromotions(att);
       if (defUnit) {
         if (UNIT_TYPES[defUnit.type].strength === 0) {
           units = units.filter(u => u !== defUnit);
           say("🏹 Your arrows scattered their " + UNIT_TYPES[defUnit.type].name + "!");
         } else {
-          const dStr = UNIT_TYPES[defUnit.type].strength * defenseBonus(defUnit.r, defUnit.c);
+          const dStr = unitStrength(defUnit, "defense") * defenseBonus(defUnit.r, defUnit.c);
           defUnit.hp -= Math.round(28 * (rStr / dStr) * (0.8 + Math.random() * 0.4));
           if (defUnit.hp <= 0) {
             units = units.filter(u => u !== defUnit);
@@ -2291,10 +2406,11 @@
         info.textContent = "That unit can't fight! Bring a Warrior.";
         return;
       }
-      // ranged units (Archers, Ninja Rangers, the Gingleraider) shoot from 2 tiles away!
+      // ranged units (Archers, Crossbowmen, the Gingleraider...) shoot from afar!
       if (UNIT_TYPES[unit.type].ranged) {
-        if (hexDist(unit.r, unit.c, targetR, targetC) > 2) {
-          info.textContent = "Too far! Ranged units shoot up to 2 tiles — move closer first.";
+        const range = UNIT_TYPES[unit.type].range || 2; // the Eheu Missionary reaches 3!
+        if (hexDist(unit.r, unit.c, targetR, targetC) > range) {
+          info.textContent = "Too far! This unit shoots up to " + range + " tiles — move closer first.";
           return;
         }
         if (unit.moves <= 0) { info.textContent = "No moves left to shoot!"; return; }
@@ -2546,7 +2662,37 @@
       }
     }
 
+    // things that still need YOUR attention this turn
+    function idleUnits() {
+      return units.filter(u => u.owner === playerKey && u.moves > 0 && !u.working && !u.skip);
+    }
+    function citiesNeedingProduction() {
+      return myCities().filter(ct => !ct.producing);
+    }
+    let endTurnArmed = false; // press End Turn once to see the warning, twice to end anyway
+
     document.getElementById("endTurn").addEventListener("click", () => {
+      // FIRST: nag the player about idle units / idle cities (like Civ 5!)
+      const idle = idleUnits();
+      const needProd = citiesNeedingProduction();
+      if ((idle.length || needProd.length) && !endTurnArmed) {
+        endTurnArmed = true;
+        if (needProd.length) {
+          selectedCity = needProd[0]; selected = null;
+          centerCameraOn(selectedCity.r, selectedCity.c);
+          renderCityPanel();
+          info.textContent = "🏙️ " + needProd[0].name + " isn't building anything! Pick something — or press End Turn again to skip.";
+        } else {
+          selected = idle[0]; selectedCity = null;
+          centerCameraOn(idle[0].r, idle[0].c);
+          info.textContent = "🚶 You have " + idle.length + " unit" + (idle.length > 1 ? "s" : "") +
+            " that haven't moved! Give orders — or press End Turn again to skip.";
+        }
+        updateButtons();
+        draw();
+        return;
+      }
+      endTurnArmed = false;
       // 0. workers finish their projects
       for (const u of units) {
         if (u.owner === playerKey && (u.type === "worker" || UNIT_TYPES[u.type].canBuild) && u.working) {
@@ -2937,6 +3083,29 @@
         g.fillRect(cx - 6, 10, 12, 5);
         g.beginPath(); g.moveTo(cx - 6, 10); g.lineTo(cx - 3, 4); g.lineTo(cx, 10); g.closePath(); g.fill();
         g.beginPath(); g.moveTo(cx, 10); g.lineTo(cx + 3, 4); g.lineTo(cx + 6, 10); g.closePath(); g.fill();
+      } else if (key === "eheu") { // Eheu, the deformed missionary
+        shoulders("#6a3aa8"); // purple robes
+        g.strokeStyle = "#ffffff"; g.lineWidth = 3; // white robe trim
+        g.beginPath(); g.moveTo(cx - 14, h); g.lineTo(cx, 52); g.lineTo(cx + 14, h); g.stroke();
+        // a lumpy, lopsided head
+        g.fillStyle = "#c7b89a";
+        g.beginPath(); g.ellipse(cx - 1, 33, 16, 15, 0.15, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(cx + 9, 40, 5, 0, Math.PI * 2); g.fill(); // a growth on the jaw
+        // uneven, sunken eyes at different heights
+        g.fillStyle = "#2a1f38";
+        g.beginPath(); g.arc(cx - 6, 30, 2.4, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.arc(cx + 5, 34, 1.5, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = "#7a5a4a"; g.lineWidth = 2; g.lineCap = "round"; // crooked grimace
+        g.beginPath(); g.moveTo(cx - 6, 42); g.lineTo(cx + 3, 39); g.stroke();
+        // a pale hood framing it all
+        g.fillStyle = "#e8e2f0";
+        g.beginPath(); g.arc(cx, 30, 18, Math.PI * 1.05, Math.PI * 1.95); g.stroke();
+        g.lineWidth = 5; g.strokeStyle = "#e8e2f0";
+        g.beginPath(); g.arc(cx, 32, 18, Math.PI * 1.1, Math.PI * 1.9); g.stroke();
+        // a small white holy cross above him
+        g.strokeStyle = "#ffffff"; g.lineWidth = 2.5;
+        g.beginPath(); g.moveTo(cx + 20, 8); g.lineTo(cx + 20, 20); g.stroke();
+        g.beginPath(); g.moveTo(cx + 16, 12); g.lineTo(cx + 24, 12); g.stroke();
       }
     }
 
