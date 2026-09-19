@@ -380,7 +380,7 @@
         primary: "#f2c21f", secondary: "#d43a2b",
         shirt: "#3a6fd8", skin: "#f5a8c0", hat: "#3a6fd8", head: "pig",
         moveBonus: 0,
-        ability: "WORKS NOW: their Knights ride actual pigs 🐖 (build Knights with Chivalry!)",
+        ability: "WORKS NOW: social policies give DOUBLE their bonus — but cost 50% more culture! (also: Knights ride actual pigs 🐖)",
         cityNames: ["Oinkville", "Hamlet", "Porkopolis", "Snoutburg", "Muddy Springs", "Truffle Town"],
       },
       pigeonians: {
@@ -458,29 +458,35 @@
     // ===== TILE IMPROVEMENTS =====
     // Workers build these to make tiles better!
     const IMPROVEMENTS = {
-      farm:       { name: "Farm 🌾",       f: 1 },
-      mine:       { name: "Mine ⛏️",       p: 1 },
-      plantation: { name: "Plantation 🌱", f: 1, g: 1 },
-      pasture:    { name: "Pasture 🐄",    f: 1 },
-      camp:       { name: "Camp 🪵",       p: 1 },
+      farm:        { name: "Farm 🌾",        f: 1 },
+      animal_farm: { name: "Animal Farm 🐖", f: 1 }, // the Pig-men's farm replacement!
+      mine:        { name: "Mine ⛏️",        p: 1 },
+      plantation:  { name: "Plantation 🌱",  f: 1, g: 1 },
+      pasture:     { name: "Pasture 🐄",     f: 1 },
+      camp:        { name: "Camp 🪵",        p: 1 },
     };
     let improvements = {}; // "row,col" -> improvement key
     let roads = new Set(); // tiles with a road — units zoom along them at half cost!
 
-    function improvementFor(r, c) {
+    // owner matters here: Pig-men build Animal Farms instead of plain Farms!
+    function improvementFor(r, c, owner) {
       const res = resources[r + "," + c];
+      let base;
       if (res) {
         const match = { wheat: "farm", cattle: "pasture", horses: "pasture", iron: "mine",
           fish: null, bananas: "plantation", gems: "mine", goldore: "mine",
           darkmatter: "plantation", bobtonium: "mine", joetonium: "plantation" };
-        return match[res];
+        base = match[res];
+      } else {
+        const t = map[r][c];
+        if (t === "grass" || t === "plains" || t === "tundra") base = "farm";
+        else if (t === "desert" || t === "snow") base = "mine";
+        else if (t === "forest") base = "camp";
+        else if (t === "jungle") base = "plantation";
+        else base = null;
       }
-      const t = map[r][c];
-      if (t === "grass" || t === "plains" || t === "tundra") return "farm";
-      if (t === "desert" || t === "snow") return "mine";
-      if (t === "forest") return "camp";
-      if (t === "jungle") return "plantation";
-      return null;
+      if (base === "farm" && owner === "pigmen") return "animal_farm";
+      return base;
     }
 
     function scatterResources() {
@@ -601,6 +607,8 @@
       swordsman: { name: "Swordsman", cost: 40, icon: "🗡️", strength: 14, tech: "iron_working" },
       digatron:  { name: "Un Digatron", cost: 40, icon: "⛏️", strength: 14, canBuild: true,
                    tech: "iron_working", civ: "diggers", replaces: "swordsman" },
+      pig_master: { name: "Pig Master", cost: 40, icon: "🐖", strength: 14, moves: 3,
+                    civ: "pigmen", replaces: "swordsman" }, // no Iron Working needed, and +3 moves!
       knight: { name: "Knight", cost: 55, icon: "🐴", strength: 20, moves: 4, tech: "chivalry" },
       gingleraider: { name: "Gingleraider", cost: 55, icon: "🚲", strength: 11, ranged: 18, moves: 5,
                       tech: "chivalry", civ: "ginglewhoppers", replaces: "knight" },
@@ -710,8 +718,9 @@
       if (owner === "skooter") maxMoves += def.infantry ? 2 : 1;
       else maxMoves += CIVS[owner].moveBonus;
       if (owner === playerKey && def.strength > 0) {
-        if (adopted.has("honor")) maxMoves += 1;
-        if (adopted.has("military_tradition")) maxMoves += 1;
+        const pmult = (owner === "pigmen") ? 2 : 1; // double policy power!
+        if (adopted.has("honor")) maxMoves += 1 * pmult;
+        if (adopted.has("military_tradition")) maxMoves += 1 * pmult;
       }
       return { type, r, c, owner, moves: maxMoves, maxMoves, hp: 100 };
     }
@@ -856,7 +865,9 @@
     function cityStrength(city) {
       let s = 8 + Math.floor(city.pop / 2);
       if (city.buildings.includes("castle")) s += 5;
-      if (city.owner === playerKey && adopted.has("oligarchy")) s = Math.round(s * 1.25);
+      if (city.owner === playerKey && adopted.has("oligarchy")) {
+        s = Math.round(s * (1 + 0.25 * (city.owner === "pigmen" ? 2 : 1)));
+      }
       return s;
     }
 
@@ -1027,8 +1038,12 @@
       if (imp) {
         const iy = IMPROVEMENTS[imp];
         y.f += iy.f || 0; y.p += iy.p || 0; y.g += iy.g || 0;
-        if (imp === "farm" && researched.has("civil_service")) y.f += 1; // Civ 5 farm bonus!
+        if ((imp === "farm" || imp === "animal_farm") && researched.has("civil_service")) y.f += 1; // Civ 5 farm bonus!
         if (imp === "camp" && researched.has("machinery")) y.p += 1;
+        if (imp === "animal_farm" && neighbors(r, c).some(n => cityAt(n.r, n.c))) {
+          // the Pig-men's Animal Farm: extra bonuses right next to a city centre!
+          y.p += 1; y.g += 1; y.cu += 1;
+        }
         // straight from Adam & Meir's slides:
         if (res === "bobtonium") y.f += 2; // "once mined it adds +2 food"
         if (res === "joetonium") y.p += 1; // "once improved adds +1 production"
@@ -1089,32 +1104,34 @@
       // social policies (only for you, the player)
       if (owner === playerKey) {
         const isCap = capitalOf(owner) === city;
-        if (!isCap && cityConnected(city)) y.g += 2; // road to the capital = trade!
-        if (adopted.has("tradition") && isCap) y.cu += 3;
-        if (adopted.has("landed_elite") && isCap) y.f += 2;
-        if (adopted.has("liberty")) y.cu += 1;
-        if (adopted.has("republic")) y.p += 1;
-        if (adopted.has("meritocracy")) y.g += 1;
-        if (adopted.has("trade_unions")) y.g += 2;
-        if (adopted.has("mercantilism")) y.g += luxCount;
-        if (adopted.has("protectionism")) y.f += luxCount;
-        if (adopted.has("free_thought")) y.s += 2;
-        if (adopted.has("secularism")) y.s += specialists * 2;
-        if (adopted.has("sovereignty")) y.s += luxCount;
+        // Pigathy's slide power: every policy gives DOUBLE its bonus!
+        const pmult = (owner === "pigmen") ? 2 : 1;
+        if (!isCap && cityConnected(city)) y.g += 2; // road to the capital = trade, not a policy
+        if (adopted.has("tradition") && isCap) y.cu += 3 * pmult;
+        if (adopted.has("landed_elite") && isCap) y.f += 2 * pmult;
+        if (adopted.has("liberty")) y.cu += 1 * pmult;
+        if (adopted.has("republic")) y.p += 1 * pmult;
+        if (adopted.has("meritocracy")) y.g += 1 * pmult;
+        if (adopted.has("trade_unions")) y.g += 2 * pmult;
+        if (adopted.has("mercantilism")) y.g += luxCount * pmult;
+        if (adopted.has("protectionism")) y.f += luxCount * pmult;
+        if (adopted.has("free_thought")) y.s += 2 * pmult;
+        if (adopted.has("secularism")) y.s += specialists * 2 * pmult;
+        if (adopted.has("sovereignty")) y.s += luxCount * pmult;
         if (adopted.has("discipline") && isCap) {
-          y.cu += units.filter(u => u.owner === owner && u.type === "warrior").length;
+          y.cu += units.filter(u => u.owner === owner && u.type === "warrior").length * pmult;
         }
         if (adopted.has("monarchy") && isCap) {
-          y.g += Math.floor(city.pop / 2); y.cu += Math.floor(city.pop / 2);
+          y.g += Math.floor(city.pop / 2) * pmult; y.cu += Math.floor(city.pop / 2) * pmult;
         }
         const guard = unitAt(city.r, city.c);
-        if (adopted.has("military_caste") && guard && guard.owner === owner) y.cu += 2;
-        if (adopted.has("piety") && city.buildings.includes("shrine")) y.cu += 2;
-        if (adopted.has("organized_religion") && city.buildings.includes("shrine")) y.f += 1;
-        if (adopted.has("theocracy") && city.buildings.includes("shrine")) y.g += 2;
-        if (adopted.has("reformation") && isCap) y.cu += 5;
-        if (adopted.has("commerce") && isCap) y.g = Math.round(y.g * 1.25);
-        if (adopted.has("rationalism")) y.s = Math.round(y.s * 1.1);
+        if (adopted.has("military_caste") && guard && guard.owner === owner) y.cu += 2 * pmult;
+        if (adopted.has("piety") && city.buildings.includes("shrine")) y.cu += 2 * pmult;
+        if (adopted.has("organized_religion") && city.buildings.includes("shrine")) y.f += 1 * pmult;
+        if (adopted.has("theocracy") && city.buildings.includes("shrine")) y.g += 2 * pmult;
+        if (adopted.has("reformation") && isCap) y.cu += 5 * pmult;
+        if (adopted.has("commerce") && isCap) y.g = Math.round(y.g * (1 + 0.25 * pmult));
+        if (adopted.has("rationalism")) y.s = Math.round(y.s * (1 + 0.1 * pmult));
       }
       return y;
     }
@@ -1130,11 +1147,13 @@
     // what can this city build right now?
     function buildOptions(city) {
       const opts = ["scout", "warrior", "worker", "settler"];
-      // advanced units unlocked by tech (special civ units REPLACE the normal one)
+      // advanced units unlocked by tech (special civ units REPLACE the normal one —
+      // and some, like the Pig Master, need NO tech at all!)
       for (const [key, u] of Object.entries(UNIT_TYPES)) {
-        if (opts.includes(key) || !u.tech) continue;
-        if (!researched.has(u.tech)) continue;
-        if (u.civ && u.civ !== city.owner) continue;
+        if (opts.includes(key)) continue;
+        if (u.civ && u.civ !== city.owner) continue; // someone else's unique unit
+        if (!u.civ && !u.tech) continue; // base units with no tech are already in opts
+        if (u.tech && !researched.has(u.tech)) continue;
         const replacedByUnique = Object.values(UNIT_TYPES)
           .some(u2 => u2.civ === city.owner && u2.replaces === key);
         if (replacedByUnique) continue;
@@ -1183,10 +1202,11 @@
       if (city.producing) {
         let mult = 1;
         if (city.owner === playerKey) {
-          if (BUILDINGS[city.producing] && BUILDINGS[city.producing].wonder && adopted.has("aristocracy")) mult *= 1.15;
-          if (city.producing === "warrior" && adopted.has("warrior_code")) mult *= 1.2;
-          if (city.producing === "warrior" && adopted.has("mercenary_army")) mult *= 1.25;
-          if (city.producing === "settler" && adopted.has("collective_rule")) mult *= 1.5;
+          const pmult = (city.owner === "pigmen") ? 2 : 1; // double policy power!
+          if (BUILDINGS[city.producing] && BUILDINGS[city.producing].wonder && adopted.has("aristocracy")) mult *= 1 + 0.15 * pmult;
+          if (city.producing === "warrior" && adopted.has("warrior_code")) mult *= 1 + 0.2 * pmult;
+          if (city.producing === "warrior" && adopted.has("mercenary_army")) mult *= 1 + 0.25 * pmult;
+          if (city.producing === "settler" && adopted.has("collective_rule")) mult *= 1 + 0.5 * pmult;
         }
         city.prodBucket += y.p * speed * mult;
         const cost = prodCost(city.producing);
@@ -1248,6 +1268,7 @@
       if (freePolicies > 0) return 0; // a free one is waiting!
       let base = POLICY_COSTS[Math.min(adopted.size, POLICY_COSTS.length - 1)];
       if (adopted.has("representation")) base *= 0.9;
+      if (playerKey === "pigmen") base *= 1.5; // Pigathy's policies hit twice as hard — but cost 50% more!
       return Math.round(base);
     }
     function availablePolicies() {
@@ -1447,7 +1468,7 @@
         ctx.beginPath();
         ctx.moveTo(x + 5, y); ctx.lineTo(x + 1.5, y - 2); ctx.lineTo(x + 1.5, y + 2);
         ctx.closePath(); ctx.fill();
-      } else if (type === "swordsman" || type === "digatron" || type === "toma") { // the sword
+      } else if (type === "swordsman" || type === "digatron" || type === "toma" || type === "pig_master") { // the sword
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(x, y - 5.5); ctx.lineTo(x, y + 5); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x - 3.5, y + 1.5); ctx.lineTo(x + 3.5, y + 1.5); ctx.stroke();
@@ -1524,7 +1545,7 @@
         ctx.beginPath(); ctx.arc(x + 12, y - 2, 9, -Math.PI / 2.6, Math.PI / 2.6); ctx.stroke();
         ctx.strokeStyle = "#e8e8e8"; ctx.lineWidth = 1.2;
         ctx.beginPath(); ctx.moveTo(x + 14.5, y - 10); ctx.lineTo(x + 14.5, y + 6); ctx.stroke();
-      } else if (type === "swordsman" || type === "digatron") {
+      } else if (type === "swordsman" || type === "digatron" || type === "pig_master") {
         drawFigure(x, y, 1, civ, walkPhase);
         // shining sword
         ctx.strokeStyle = "#d8dce4"; ctx.lineWidth = 3.5; ctx.lineCap = "round";
@@ -1537,6 +1558,12 @@
           ctx.beginPath(); ctx.moveTo(x - 13, y - 10); ctx.lineTo(x - 13, y + 8); ctx.stroke();
           ctx.fillStyle = "#9aa0aa";
           ctx.beginPath(); ctx.ellipse(x - 13, y + 11, 3.5, 5, 0, 0, Math.PI * 2); ctx.fill();
+        } else if (type === "pig_master") {
+          // a little piglet trots alongside its master!
+          ctx.fillStyle = "#f5a8c0";
+          ctx.beginPath(); ctx.ellipse(x - 12, y + 10, 5, 4, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#e87fa0";
+          ctx.beginPath(); ctx.ellipse(x - 8.5, y + 9, 1.8, 1.4, 0, 0, Math.PI * 2); ctx.fill();
         } else {
           ctx.fillStyle = "#8a5a2a"; // wooden shield
           ctx.beginPath(); ctx.arc(x - 10, y + 3, 5.5, 0, Math.PI * 2); ctx.fill();
@@ -1775,6 +1802,16 @@
           for (const dy of [-2, 3, 8]) {
             ctx.beginPath(); ctx.moveTo(p.x - 9, top + dy); ctx.lineTo(p.x + 9, top + dy); ctx.stroke();
           }
+        } else if (imp === "animal_farm") {
+          // furrowed fields PLUS a little pig pen — Pigathy's favorite tile!
+          ctx.strokeStyle = "#e0b93f"; ctx.lineWidth = 2.5; ctx.lineCap = "round";
+          for (const dy of [-2, 8]) {
+            ctx.beginPath(); ctx.moveTo(p.x - 9, top + dy); ctx.lineTo(p.x + 9, top + dy); ctx.stroke();
+          }
+          ctx.strokeStyle = "#8a5a2a"; ctx.lineWidth = 1.5;
+          ctx.strokeRect(p.x - 6, top + 1, 12, 6);
+          ctx.fillStyle = "#f5a8c0";
+          ctx.beginPath(); ctx.ellipse(p.x, top + 4, 3, 2, 0, 0, Math.PI * 2); ctx.fill();
         } else if (imp === "mine") {
           ctx.fillStyle = "#4a4038";
           ctx.beginPath(); ctx.arc(p.x + 6, top + 4, 6, Math.PI, 0); ctx.fill();
@@ -1972,11 +2009,11 @@
       foundBtn.style.display = (selected && selected.type === "settler") ? "" : "none";
       const canImprove = selected && (selected.type === "worker" || UNIT_TYPES[selected.type].canBuild) && !selected.working &&
         !improvements[selected.r + "," + selected.c] &&
-        improvementFor(selected.r, selected.c) &&
+        improvementFor(selected.r, selected.c, selected.owner) &&
         territorySet(playerKey).has(selected.r + "," + selected.c);
       improveBtn.style.display = canImprove ? "" : "none";
       if (canImprove) {
-        improveBtn.textContent = "Build " + IMPROVEMENTS[improvementFor(selected.r, selected.c)].name;
+        improveBtn.textContent = "Build " + IMPROVEMENTS[improvementFor(selected.r, selected.c, selected.owner)].name;
       }
       // roads can be built ANYWHERE on land — connect your cities!
       const canRoad = selected && (selected.type === "worker" || UNIT_TYPES[selected.type].canBuild) && !selected.working &&
@@ -2108,17 +2145,18 @@
         cultureBucket -= price;
       }
       adopted.add(key);
+      const pmult = (playerKey === "pigmen") ? 2 : 1; // Pigathy's policies hit twice as hard!
       if (key === "honor" || key === "military_tradition") {
         for (const u of units) {
-          if (u.owner === playerKey && UNIT_TYPES[u.type].strength > 0) { u.maxMoves++; u.moves++; }
+          if (u.owner === playerKey && UNIT_TYPES[u.type].strength > 0) { u.maxMoves += pmult; u.moves += pmult; }
         }
       }
       if (key === "legalism") {
         const cap = capitalOf(playerKey);
         if (cap && !cap.buildings.includes("monument")) cap.buildings.push("monument");
       }
-      if (key === "philanthropy") gold += 25;
-      if (key === "scientific_revolution") scienceBucket += 50;
+      if (key === "philanthropy") gold += 25 * pmult;
+      if (key === "scientific_revolution") scienceBucket += 50 * pmult;
       document.getElementById("policyPanel").style.display = "none";
       info.textContent = "🎭 You adopted " + name + "!";
       updateTopbar();
@@ -2475,7 +2513,7 @@
     improveBtn.addEventListener("click", () => {
       if (!selected || selected.working) return;
       if (selected.type !== "worker" && !UNIT_TYPES[selected.type].canBuild) return;
-      const type = improvementFor(selected.r, selected.c);
+      const type = improvementFor(selected.r, selected.c, selected.owner);
       const key = selected.r + "," + selected.c;
       if (!type || improvements[key]) return;
       if (!territorySet(playerKey).has(key)) {
@@ -2544,7 +2582,8 @@
       cultureBucket += cul;
       gold += gld;
       // 1.4 gifts from city-states you've met (Patronage makes them extra generous!)
-      const csMult = adopted.has("patronage") ? 1.5 : 1;
+      const policyMult = (playerKey === "pigmen") ? 2 : 1; // double policy power!
+      const csMult = 1 + (adopted.has("patronage") ? 0.5 * policyMult : 0);
       const friendlyCS = [...met].filter(o => CIVS[o].cityState && cities.some(ct => ct.owner === o));
       for (const o of friendlyCS) {
         const amt = Math.round(2 * csMult);
@@ -2554,8 +2593,8 @@
         else if (kind === "food") { const cap = capitalOf(playerKey); if (cap) cap.foodBucket += amt; }
         else if (kind === "production") { const cap = capitalOf(playerKey); if (cap) cap.prodBucket += amt; }
       }
-      if (adopted.has("consulates")) cultureBucket += friendlyCS.length;
-      if (adopted.has("scholasticism")) scienceBucket += friendlyCS.length;
+      if (adopted.has("consulates")) cultureBucket += friendlyCS.length * policyMult;
+      if (adopted.has("scholasticism")) scienceBucket += friendlyCS.length * policyMult;
       // 1.5 Great People points pile up
       let gs = 0, ge = 0;
       for (const city of myCities()) {
@@ -2568,7 +2607,7 @@
           }
         }
       }
-      if (adopted.has("humanism")) gs += 2;
+      if (adopted.has("humanism")) gs += 2 * policyMult;
       gsPoints += gs; gePoints += ge;
       if (gsPoints >= gsNeed) {
         gsPoints -= gsNeed; gsNeed += 30;
@@ -2613,7 +2652,7 @@
         if (u.hp < 100) {
           let heal = myLand.has(u.r + "," + u.c) ? 20 : 10; // resting at home is best
           if (u.darkHeal && myLand.has(u.r + "," + u.c)) heal *= 2; // Dark Matter magic!
-          if (adopted.has("professional_army")) heal += 10;
+          if (adopted.has("professional_army")) heal += 10 * (playerKey === "pigmen" ? 2 : 1);
           u.hp = Math.min(100, u.hp + heal);
         }
       }
