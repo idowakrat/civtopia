@@ -563,7 +563,7 @@
       // --- MEDIEVAL ERA ---
       theology:         { name: "Theology ⛪",         cost: 100, col: 5, req: ["philosophy"], gives: "unlocks the Shrine ⛩️" },
       civil_service:    { name: "Civil Service 📋",    cost: 110, col: 5, req: ["philosophy", "trapping"], gives: "Farms give +1 food" },
-      engineering:      { name: "Engineering ⚙️",      cost: 110, col: 5, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
+      engineering:      { name: "Engineering ⚙️",      cost: 110, col: 5, req: ["mathematics", "construction"], gives: "the Workshop 🔨 (Skooter Dudes: the Scooter Engineer!)" },
       metal_casting:    { name: "Metal Casting 🔥",    cost: 110, col: 5, req: ["iron_working"], gives: "unlocks the Forge 🔥" },
       compass:          { name: "Compass 🧭",          cost: 110, col: 5, req: ["optics"], gives: "far-seeing ships & Harbors" },
       education:        { name: "Education 🎓",        cost: 150, col: 6, req: ["theology"], gives: "unlocks the University 🎓" },
@@ -598,7 +598,7 @@
       // --- MODERN ERA ---
       refrigeration:    { name: "Refrigeration 🧊",    cost: 650, col: 12, req: ["electricity"], gives: "fresh food everywhere" },
       radio:            { name: "Radio 📻",            cost: 650, col: 12, req: ["electricity", "steam_railroad"], gives: "broadcast to the world" },
-      combustion:       { name: "Combustion 🚗",       cost: 680, col: 12, req: ["replaceable_parts", "steam_railroad"], gives: "Tanks & cars roar" },
+      combustion:       { name: "Combustion 🚗",       cost: 680, col: 12, req: ["replaceable_parts", "steam_railroad"], gives: "Tanks (Skooter Dudes: the Scooter-man 201!)" },
       electronics:      { name: "Electronics 💡",      cost: 680, col: 12, req: ["radio"], gives: "gadgets, radar & computers" },
       flight:           { name: "Flight ✈️",           cost: 750, col: 13, req: ["radio", "replaceable_parts"], gives: "Bombers (Pigeonians: the Birdie Bomber!)" },
       ballistics:       { name: "Ballistics 💣",       cost: 760, col: 13, req: ["rifling", "electronics"], gives: "Machine Guns rattle" },
@@ -719,6 +719,12 @@
       bomber: { name: "Bomber", cost: 130, icon: "✈️", strength: 20, ranged: 40, range: 4, moves: 6, tech: "flight" },
       birdie_bomber: { name: "Birdie Bomber", cost: 130, icon: "🕊️", strength: 20, ranged: 40, range: 4, moves: 6,
                        tech: "flight", civ: "pigeonians", replaces: "bomber", freePromo: true }, // born promoted!
+      tank: { name: "Tank", cost: 150, icon: "🛡️", strength: 50, moves: 4, tech: "combustion" },
+      scooter_man_201: { name: "Scooter-man 201", cost: 150, icon: "🛵", strength: 52, moves: 9,
+                         tech: "combustion", civ: "skooter", replaces: "tank" }, // +5 moves over a Tank!
+      // the Scooter Engineer isn't a replacement — it's an extra Skooter support unit
+      scooter_engineer: { name: "Scooter Engineer", cost: 60, icon: "🔧", strength: 8,
+                          tech: "engineering", civ: "skooter", healRadius: 1 }, // heals friends within 1 tile
     };
 
     // ===== PROMOTIONS =====
@@ -1704,6 +1710,15 @@
         ctx.beginPath(); ctx.moveTo(x, y - 4.5); ctx.lineTo(x, y + 4.5); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x - 4.5, y - 0.5); ctx.lineTo(x + 4.5, y - 0.5); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x - 2.5, y + 4); ctx.lineTo(x + 2.5, y + 4); ctx.stroke();
+      } else if (type === "tank" || type === "scooter_man_201") { // a tiny tank
+        ctx.lineWidth = 1.6;
+        ctx.strokeRect(x - 4, y - 1, 8, 4);
+        ctx.beginPath(); ctx.arc(x, y - 1, 2, Math.PI, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x, y - 2.5); ctx.lineTo(x + 5, y - 3.5); ctx.stroke();
+      } else if (type === "scooter_engineer") { // a wrench
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 3.5, y + 4); ctx.lineTo(x + 2, y - 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x + 3, y - 3, 2.6, Math.PI * 0.6, Math.PI * 2); ctx.stroke();
       } else { // scout binoculars
         ctx.lineWidth = 1.8;
         ctx.beginPath(); ctx.arc(x - 2.8, y, 2.6, 0, Math.PI * 2); ctx.stroke();
@@ -1933,6 +1948,46 @@
           ctx.fillStyle = "#3a3a44"; // cockpit
           ctx.beginPath(); ctx.arc(x, y - 6, 2.2, 0, Math.PI * 2); ctx.fill();
         }
+      } else if (type === "tank" || type === "scooter_man_201") {
+        // a chunky armoured tank with treads, hull, turret and a long barrel
+        const hull = type === "scooter_man_201" ? civ.shirt : shade(civ.shirt, 0.8);
+        ctx.fillStyle = "#2a2a2e"; // treads
+        ctx.fillRect(x - 15, y + 4, 30, 8);
+        ctx.fillStyle = "#4a4a52";
+        for (let wx = -12; wx <= 12; wx += 6) { ctx.beginPath(); ctx.arc(x + wx, y + 8, 2.4, 0, Math.PI * 2); ctx.fill(); }
+        ctx.fillStyle = hull; // hull
+        ctx.fillRect(x - 13, y - 3, 26, 8);
+        ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1; ctx.strokeRect(x - 13, y - 3, 26, 8);
+        ctx.fillStyle = shade(hull, 0.85); // turret
+        ctx.beginPath(); ctx.ellipse(x - 1, y - 5, 8, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = shade(hull, 0.6); ctx.lineWidth = 3; ctx.lineCap = "round"; // barrel
+        ctx.beginPath(); ctx.moveTo(x + 4, y - 6); ctx.lineTo(x + 20, y - 9); ctx.stroke();
+        if (type === "scooter_man_201") {
+          // give the super-scooter-tank a little helmet and speed stripes
+          ctx.fillStyle = civ.secondary;
+          ctx.beginPath(); ctx.arc(x - 1, y - 9, 4, Math.PI, 0); ctx.fill();
+          ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.moveTo(x - 20, y - 1); ctx.lineTo(x - 14, y - 1); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x - 21, y + 2); ctx.lineTo(x - 15, y + 2); ctx.stroke();
+        }
+      } else if (type === "scooter_engineer") {
+        // a mechanic on a scooter, waving a wrench
+        ctx.strokeStyle = "#3a3a44"; ctx.lineWidth = 2.5; // scooter wheels
+        const spin = walkPhase === null ? 0 : walkPhase * Math.PI * 2;
+        for (const dx of [-9, 9]) {
+          ctx.beginPath(); ctx.arc(x + dx, y + 11, 5, 0, Math.PI * 2); ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(x + dx - 4 * Math.cos(spin), y + 11 - 4 * Math.sin(spin));
+          ctx.lineTo(x + dx + 4 * Math.cos(spin), y + 11 + 4 * Math.sin(spin)); ctx.stroke();
+        }
+        ctx.strokeStyle = civ.secondary; ctx.lineWidth = 2.5; // deck + stem
+        ctx.beginPath(); ctx.moveTo(x - 9, y + 11); ctx.lineTo(x + 9, y + 11); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x + 9, y + 11); ctx.lineTo(x + 11, y - 2); ctx.stroke();
+        drawFigure(x - 1, y - 6, 0.85, civ, null);
+        // the wrench, held up high
+        ctx.strokeStyle = "#c8ccd4"; ctx.lineWidth = 3; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(x + 8, y - 2); ctx.lineTo(x + 17, y - 14); ctx.stroke();
+        ctx.beginPath(); ctx.arc(x + 18, y - 15, 3, Math.PI * 0.6, Math.PI * 2); ctx.stroke();
       } else {
         // the scout, striding with the civilization's flag
         drawFigure(x, y, 1, civ, walkPhase);
@@ -3110,6 +3165,16 @@
           if (u.darkHeal && myLand.has(u.r + "," + u.c)) heal *= 2; // Dark Matter magic!
           if (adopted.has("professional_army")) heal += 10 * (playerKey === "pigmen" ? 2 : 1);
           u.hp = Math.min(100, u.hp + heal);
+        }
+      }
+      // Scooter Engineers patch up every friendly unit standing within their radius
+      for (const eng of units) {
+        if (eng.owner !== playerKey || !UNIT_TYPES[eng.type].healRadius) continue;
+        for (const u of units) {
+          if (u.owner !== playerKey || u === eng || u.hp >= 100) continue;
+          if (hexDist(eng.r, eng.c, u.r, u.c) <= UNIT_TYPES[eng.type].healRadius) {
+            u.hp = Math.min(100, u.hp + 30);
+          }
         }
       }
       for (const ct of cities) if (ct.hp < 100) ct.hp = Math.min(100, ct.hp + 10);
