@@ -424,6 +424,14 @@
         ability: "WORKS NOW: every unit you build is born with a FREE promotion!",
         cityNames: ["Eheu Prime", "Missionaria", "Sackville", "Woe Town", "Lamentport", "Grimhold", "Eheuville"],
       },
+      nerd: {
+        name: "The N.E.R.D Institution", leader: "The Mentalist", emoji: "🧠",
+        primary: "#2f6fe0", secondary: "#2fae5a",
+        shirt: "#2f4668", skin: "#ffd9a6", hat: "#2a2a2a", head: "human", wings: true,
+        moveBonus: 0,
+        ability: "WORKS NOW: +3 food in every city. All units sprout little white wings!",
+        cityNames: ["Nerdopolis", "Brainhaven", "Thinktown", "Mensa City", "Cortex", "Eureka Heights", "The Lab"],
+      },
       // not a real civilization — just lives in the CIVS list for colors & drawing
       barb: {
         name: "Barbarians", leader: "Nobody", emoji: "💀", hidden: true,
@@ -661,6 +669,8 @@
       diggers: { workshop: { name: "Une Digged ⛏️🔨", effect: { p: 2 } } }, // + desert bonus below!
       // the Eheu Centre of Amenities: +2 happiness, +1 culture, and units built here start with +15 XP!
       eheu: { colosseum: { name: "Eheu Centre of Amenities 🙏", effect: { cu: 1, happy: 2 }, xpBonus: 15 } },
+      // the N.E.R.D Institution's super-university: a mouthful of a name!
+      nerd: { university: { name: "Psychoaquamentopathicobrainessentologist 🧠", effect: { s: 5, f: 2, happy: 2 } } },
     };
     function bInfo(key, owner) {
       const rep = REPLACEMENTS[owner] && REPLACEMENTS[owner][key];
@@ -700,6 +710,9 @@
       infantry: { name: "Infantry", cost: 90, icon: "🎖️", strength: 36, tech: "replaceable_parts", infantry: true },
       toma: { name: "Toma", cost: 90, icon: "🗡️", strength: 38, amphibious: true,
               tech: "replaceable_parts", civ: "humanity", replaces: "infantry", infantry: true },
+      agent_nerd: { name: "Agent N.E.R.D", cost: 90, icon: "🕵️", strength: 36, infantry: true,
+                    tech: "replaceable_parts", civ: "nerd", replaces: "infantry",
+                    killScience: 50, cityHappy: 2 }, // +50 science per kill, +2 happy when in a city
       bomber: { name: "Bomber", cost: 130, icon: "✈️", strength: 20, ranged: 40, range: 4, moves: 6, tech: "flight" },
       birdie_bomber: { name: "Birdie Bomber", cost: 130, icon: "🕊️", strength: 20, ranged: 40, range: 4, moves: 6,
                        tech: "flight", civ: "pigeonians", replaces: "bomber", freePromo: true }, // born promoted!
@@ -843,6 +856,12 @@
         h -= 3 + city.pop;
       }
       h += luxTypes.size * 4;
+      // some units (Agent N.E.R.D!) cheer up a city just by standing guard in it
+      for (const u of units) {
+        if (u.owner !== playerKey || !UNIT_TYPES[u.type].cityHappy) continue;
+        const ct = cityAt(u.r, u.c);
+        if (ct && ct.owner === playerKey) h += UNIT_TYPES[u.type].cityHappy;
+      }
       return h;
     }
     const adopted = new Set();  // social policies
@@ -1035,6 +1054,12 @@
       const result = { defDead: def.hp <= 0, attDead: att.hp <= 0 };
       if (att.hp > 0) checkPromotions(att);
       if (def.hp > 0) checkPromotions(def);
+      // Agent N.E.R.D earns +50 science for every enemy it slays (attacking OR defending)
+      const killer = result.defDead && att.hp > 0 ? att : (result.attDead && def.hp > 0 ? def : null);
+      if (killer && killer.owner === playerKey && UNIT_TYPES[killer.type].killScience) {
+        scienceBucket += UNIT_TYPES[killer.type].killScience;
+        say("🧠 Agent N.E.R.D vaporised a foe and harvested +" + UNIT_TYPES[killer.type].killScience + " science!");
+      }
       units = units.filter(u => u.hp > 0);
       return result;
     }
@@ -1247,6 +1272,7 @@
       }
       if (owner === "diggers" && city.buildings.includes("workshop")) y.p += desertCount;
       if (owner === "humanity" && capitalOf(owner) === city) y.cu += Math.max(0, 6 - met.size);
+      if (owner === "nerd") y.f += 3; // The Mentalist feeds every city +3 food
       // buildings
       for (const b of city.buildings) {
         const e = bInfo(b, owner).effect;
@@ -1666,7 +1692,7 @@
       } else if (type === "knight") { // horseshoe
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.arc(x, y, 4, Math.PI * 0.85, Math.PI * 2.15); ctx.stroke();
-      } else if (type === "musketman" || type === "bobo" || type === "infantry") { // the musket
+      } else if (type === "musketman" || type === "bobo" || type === "infantry" || type === "agent_nerd") { // the musket
         ctx.lineWidth = 2.2;
         ctx.beginPath(); ctx.moveTo(x - 4, y + 4.5); ctx.lineTo(x + 4, y - 4.5); ctx.stroke();
         ctx.beginPath(); ctx.arc(x - 3, y + 3.5, 1.6, 0, Math.PI * 2); ctx.fill();
@@ -1682,11 +1708,33 @@
       }
     }
 
+    // little white feathered wings sprouting from a unit's back
+    function drawWings(x, y, scale) {
+      ctx.save();
+      const flap = 1 + 0.12 * Math.sin(animTime * 6); // a gentle flutter
+      for (const side of [-1, 1]) {
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "rgba(150,170,210,0.7)"; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x + side * 3, y - 2);
+        ctx.quadraticCurveTo(x + side * 16 * scale, y - 12 * scale * flap, x + side * 20 * scale, y + 2 * scale);
+        ctx.quadraticCurveTo(x + side * 14 * scale, y + 3 * scale, x + side * 3, y + 4);
+        ctx.closePath(); ctx.fill(); ctx.stroke();
+        // a couple of feather lines
+        ctx.strokeStyle = "rgba(150,170,210,0.5)";
+        ctx.beginPath(); ctx.moveTo(x + side * 6, y); ctx.lineTo(x + side * 15 * scale, y - 1 * scale); ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     function drawUnit(u, x, y, walkPhase) {
       const civ = CIVS[u.owner];
       const type = u.type;
       ctx.fillStyle = "rgba(0,0,0,0.25)";
       ctx.beginPath(); ctx.ellipse(x, y + 15, 12, 4, 0, 0, Math.PI * 2); ctx.fill();
+      // N.E.R.D units are winged! Agent N.E.R.D gets MASSIVE wings.
+      const wingScale = type === "agent_nerd" ? 1.8 : (civ.wings ? 0.8 : 0);
+      if (wingScale) drawWings(x, y, wingScale);
       if (type === "warrior") {
         // Civ 5 units are little squads — so here's a battle buddy!
         drawFigure(x - 9, y - 4, 0.75, civ, walkPhase);
@@ -1849,6 +1897,13 @@
         ctx.beginPath(); ctx.moveTo(x + 11, y + 6); ctx.lineTo(x + 19, y - 19); ctx.stroke();
         ctx.strokeStyle = "#b8860b"; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.moveTo(x + 8, y + 2); ctx.lineTo(x + 16, y + 5); ctx.stroke();
+      } else if (type === "agent_nerd") {
+        // a secret agent: sharp suit, dark shades, and a rifle
+        drawFigure(x, y, 1, civ, walkPhase);
+        ctx.fillStyle = "#1a1a1a"; // big black sunglasses
+        ctx.fillRect(x - 6, y - 9, 12, 3.5);
+        ctx.strokeStyle = "#b8bec8"; ctx.lineWidth = 2; ctx.lineCap = "round"; // rifle
+        ctx.beginPath(); ctx.moveTo(x + 8, y + 6); ctx.lineTo(x + 19, y - 10); ctx.stroke();
       } else if (type === "bomber" || type === "birdie_bomber") {
         // an aeroplane seen from above, with a shadow beneath it (it's flying!)
         ctx.fillStyle = "rgba(0,0,0,0.18)";
@@ -2712,6 +2767,7 @@
       humanity: "Behold Adam the Great! History will remember whether you were friend or foe.",
       skooter: "Yo! King Meir here. Race you to the next era — last one there's a rusty scooter!",
       eheu: "Eheu... eheu... you have found us. Join our mission, or be prayed for.",
+      nerd: "I already knew you'd come. The N.E.R.D Institution calculated this meeting to the second.",
     };
     function showNextGreeting() {
       const o = greetQueue.shift();
@@ -3307,6 +3363,27 @@
         g.strokeStyle = "#ffffff"; g.lineWidth = 2.5;
         g.beginPath(); g.moveTo(cx + 20, 8); g.lineTo(cx + 20, 20); g.stroke();
         g.beginPath(); g.moveTo(cx + 16, 12); g.lineTo(cx + 24, 12); g.stroke();
+      } else if (key === "nerd") { // The Mentalist — King Meir, but mysterious
+        g.strokeStyle = "#b8bec8"; g.lineWidth = 3; // scooter handlebar, just like Meir
+        g.beginPath(); g.moveTo(cx - 18, h - 2); g.lineTo(cx + 18, h - 2); g.stroke();
+        g.beginPath(); g.moveTo(cx, h - 2); g.lineTo(cx, h + 6); g.stroke();
+        shoulders("#2f4668");
+        head("#ffd9a6"); smile(false);
+        // big black sunglasses
+        g.fillStyle = "#111";
+        g.beginPath(); g.ellipse(cx - 6, 31, 5, 4, 0, 0, Math.PI * 2); g.fill();
+        g.beginPath(); g.ellipse(cx + 6, 31, 5, 4, 0, 0, Math.PI * 2); g.fill();
+        g.strokeStyle = "#111"; g.lineWidth = 2; // bridge + arms
+        g.beginPath(); g.moveTo(cx - 1, 30); g.lineTo(cx + 1, 30); g.stroke();
+        g.beginPath(); g.moveTo(cx - 11, 30); g.lineTo(cx - 15, 29); g.stroke();
+        g.beginPath(); g.moveTo(cx + 11, 30); g.lineTo(cx + 15, 29); g.stroke();
+        // a dark fedora instead of a helmet
+        g.fillStyle = "#2a2a2a";
+        g.beginPath(); g.ellipse(cx, 20, 20, 5, 0, 0, Math.PI * 2); g.fill(); // wide brim
+        g.beginPath(); g.moveTo(cx - 11, 20); g.quadraticCurveTo(cx - 9, 6, cx, 6);
+        g.quadraticCurveTo(cx + 9, 6, cx + 11, 20); g.closePath(); g.fill(); // crown
+        g.fillStyle = "#2fae5a"; // green hat band (their civ color)
+        g.fillRect(cx - 11, 17, 22, 3);
       }
       g.restore(); // done clipping
     }
@@ -3368,6 +3445,18 @@
         g.quadraticCurveTo(cxOf(w), h * 0.15, w * 0.7, h * 0.4); g.lineTo(w * 0.7, h); g.closePath(); g.fill();
         g.fillStyle = "rgba(255,220,120,0.7)";
         for (const cxp of [w * 0.2, w * 0.8]) { g.beginPath(); g.arc(cxp, h * 0.55, 2.5, 0, Math.PI * 2); g.fill(); }
+      } else if (key === "nerd") { // a chalkboard covered in brainy formulas
+        g.fillStyle = "rgba(0,0,0,0.3)";
+        g.fillRect(w * 0.08, h * 0.12, w * 0.84, h * 0.6);
+        g.strokeStyle = "rgba(255,255,255,0.45)"; g.lineWidth = 1.5;
+        g.beginPath(); // E = mc^2 squiggle
+        g.moveTo(w * 0.18, h * 0.3); g.lineTo(w * 0.3, h * 0.3);
+        g.moveTo(w * 0.36, h * 0.25); g.lineTo(w * 0.44, h * 0.4);
+        g.moveTo(w * 0.52, h * 0.28); g.lineTo(w * 0.52, h * 0.42);
+        g.moveTo(w * 0.6, h * 0.3); g.bezierCurveTo(w * 0.68, h * 0.2, w * 0.72, h * 0.5, w * 0.8, h * 0.35);
+        g.stroke();
+        g.beginPath(); g.arc(w * 0.26, h * 0.52, 5, 0, Math.PI * 2); g.stroke(); // a little atom
+        g.beginPath(); g.ellipse(w * 0.26, h * 0.52, 9, 3.5, 0.6, 0, Math.PI * 2); g.stroke();
       }
       g.restore();
     }
