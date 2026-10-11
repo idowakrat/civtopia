@@ -106,9 +106,12 @@
     .diffBtn.selected { background: #66d9ff; color: #0a2a40; }
     /* the tech tree, in columns like Civ 5 */
     #techList, #policyList { flex-wrap: nowrap; align-items: flex-start; justify-content: flex-start; overflow-x: auto; max-width: 98vw; padding: 0 10px; }
+    /* the tech tree holds its columns AND the SVG branch-lines in one positioned box */
+    #techInner { position: relative; display: flex; flex-direction: row; align-items: flex-start; gap: 12px; }
+    #techLines { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 0; overflow: visible; }
     .techCol { display: flex; flex-direction: column; gap: 8px; min-width: 180px; }
-    .techEra { text-align: center; color: #ffd966; font-weight: bold; }
-    .techCard { width: 180px; font-size: 0.75em; padding: 7px; }
+    .techEra { text-align: center; color: #ffd966; font-weight: bold; position: relative; z-index: 1; }
+    .techCard { width: 180px; font-size: 0.75em; padding: 7px; position: relative; z-index: 1; }
     .techCard.locked { opacity: 0.45; cursor: not-allowed; }
     .techCard.locked:hover { background: #23234a; border-color: #4466aa; transform: none; }
     .techCard.done { border-color: #3fbf5a; opacity: 0.75; }
@@ -611,14 +614,14 @@
       lasers:           { name: "Lasers 🔦",           cost: 1150, col: 15, req: ["nuclear_fission", "radar"], gives: "beams of pure light" },
       nuclear_fusion:   { name: "Nuclear Fusion ⚛️",   cost: 1200, col: 16, req: ["lasers", "nuclear_fission"], gives: "limitless power" },
       globalization:    { name: "Globalization 🌐",    cost: 1250, col: 16, req: ["satellites", "computers"], gives: "the whole world connects" },
-      particle_physics: { name: "Particle Physics 🔬", cost: 1350, col: 16, req: ["lasers", "nuclear_fusion"], gives: "the tiniest secrets of all" },
       stealth:          { name: "Stealth 🥷",          cost: 1450, col: 16, req: ["robotics", "radar"], gives: "invisible aircraft" },
-      nanotechnology:   { name: "Nanotechnology 🧫",   cost: 1450, col: 16, req: ["particle_physics", "robotics"], gives: "tiny machines build anything" },
-      future_tech:      { name: "Future Tech 🌟",      cost: 1600, col: 17, req: ["nanotechnology", "globalization"], gives: "the future is NOW!" },
+      particle_physics: { name: "Particle Physics 🔬", cost: 1350, col: 17, req: ["lasers", "nuclear_fusion"], gives: "the tiniest secrets of all" },
+      nanotechnology:   { name: "Nanotechnology 🧫",   cost: 1450, col: 18, req: ["particle_physics", "robotics"], gives: "tiny machines build anything" },
+      future_tech:      { name: "Future Tech 🌟",      cost: 1600, col: 19, req: ["nanotechnology", "globalization"], gives: "the future is NOW!" },
     };
     // which era each COLUMN belongs to (index into ERA_NAMES)
     const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Renaissance", "Industrial", "Modern", "Future"];
-    const ERA_OF_COL = [0,0,0, 1,1, 2,2, 3,3,3, 4,4, 5,5, 6,6,6,6];
+    const ERA_OF_COL = [0,0,0, 1,1, 2,2, 3,3,3, 4,4, 5,5, 6,6,6,6,6,6];
     const TECH_ERAS = ERA_OF_COL.map(i => ERA_NAMES[i]); // era label for each column
     let currentEra = 0;
     function eraOf() { // your era = the newest tech you know
@@ -2377,8 +2380,11 @@
       // draws the whole tree in columns, like Civ 5's tech screen
       const list = document.getElementById("techList");
       list.innerHTML = "";
+      const inner = document.createElement("div");
+      inner.id = "techInner";
       const maxCol = Math.max(...Object.values(TECHS).map(t => t.col));
       const canPick = new Set(availableTechs());
+      const cardEls = {}; // remember each tech's card so we can draw branch lines to it
       for (let col = 0; col <= maxCol; col++) {
         const colDiv = document.createElement("div");
         colDiv.className = "techCol";
@@ -2410,11 +2416,61 @@
               updateTopbar();
             });
           }
+          cardEls[key] = card;
           colDiv.appendChild(card);
         }
-        list.appendChild(colDiv);
+        inner.appendChild(colDiv);
       }
+      list.appendChild(inner);
       document.getElementById("techPanel").style.display = "flex";
+      // now that the cards are laid out on screen, draw the branch lines between them
+      drawTechBranches(inner, cardEls, canPick);
+    }
+
+    // draw a curved line from each prerequisite tech to the tech it unlocks
+    function drawTechBranches(inner, cardEls, canPick) {
+      const NS = "http://www.w3.org/2000/svg";
+      const svg = document.createElementNS(NS, "svg");
+      svg.id = "techLines";
+      const W = inner.scrollWidth, H = inner.scrollHeight;
+      svg.setAttribute("width", W);
+      svg.setAttribute("height", H);
+      for (const [key, t] of Object.entries(TECHS)) {
+        const to = cardEls[key];
+        if (!to) continue;
+        for (const rq of t.req) {
+          const from = cardEls[rq];
+          if (!from) continue;
+          const y1 = from.offsetTop + from.offsetHeight / 2;
+          const y2 = to.offsetTop + to.offsetHeight / 2;
+          const path = document.createElementNS(NS, "path");
+          let d;
+          if (to.offsetLeft > from.offsetLeft + from.offsetWidth + 6) {
+            // normal case: the unlocked tech is to the RIGHT — flowing S-curve
+            const x1 = from.offsetLeft + from.offsetWidth;      // right edge of the prereq
+            const x2 = to.offsetLeft;                           // left edge of what it unlocks
+            const dx = Math.max(18, (x2 - x1) * 0.45);
+            d = "M " + x1 + " " + y1 + " C " + (x1 + dx) + " " + y1 +
+              ", " + (x2 - dx) + " " + y2 + ", " + x2 + " " + y2;
+          } else {
+            // same-column (or backward) link: a small arc bowing out to the left edge
+            const lx1 = from.offsetLeft, lx2 = to.offsetLeft;
+            const bow = Math.min(lx1, lx2) - 16;
+            d = "M " + lx1 + " " + y1 + " C " + bow + " " + y1 +
+              ", " + bow + " " + y2 + ", " + lx2 + " " + y2;
+          }
+          path.setAttribute("d", d);
+          // colour the line by what it leads to: green=done, cyan=researchable now, grey=locked
+          let color = "rgba(140,160,200,0.35)", wdt = 2;
+          if (researched.has(key)) color = "rgba(63,191,90,0.55)";
+          else if (canPick.has(key)) { color = "rgba(102,217,255,0.95)"; wdt = 2.5; }
+          path.setAttribute("stroke", color);
+          path.setAttribute("stroke-width", wdt);
+          path.setAttribute("fill", "none");
+          svg.appendChild(path);
+        }
+      }
+      inner.insertBefore(svg, inner.firstChild); // sits behind the cards (z-index keeps cards on top)
     }
 
     function renderPolicyPanel() {
