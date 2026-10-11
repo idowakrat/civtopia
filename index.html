@@ -524,50 +524,101 @@
     }
 
     // ===== TECHNOLOGIES =====
-    // A real Civilization 5 style tech tree! "col" is the column it sits in.
+    // The FULL Civilization 5 tech tree — all 7 eras, from Agriculture to Future Tech!
+    // "col" is the column it sits in; techs flow left to right. Every "req" must be
+    // researched first. Costs climb steeply so reaching the Future is a whole journey.
     const TECHS = {
-      agriculture:      { name: "Agriculture 🌱",      cost: 8,  col: 0, req: [], gives: "the start of everything — farms (soon)" },
-      pottery:          { name: "Pottery 🏺",          cost: 15, col: 1, req: ["agriculture"], gives: "leads to Sailing, Calendar and Writing" },
-      animal_husbandry: { name: "Animal Husbandry 🐄", cost: 15, col: 1, req: ["agriculture"], gives: "pastures for cattle and horses (soon)" },
-      archery:          { name: "Archery 🏹",          cost: 15, col: 1, req: ["agriculture"], gives: "unlocks Archers (Boland: the Ninja Ranger!)" },
-      mining:           { name: "Mining ⛏️",           cost: 15, col: 1, req: ["agriculture"], gives: "unlocks the Woodhenge 🪵 wonder" },
-      sailing:          { name: "Sailing ⛵",          cost: 25, col: 2, req: ["pottery"], gives: "boats to cross the sea (soon)" },
-      calendar:         { name: "Calendar 📅",         cost: 25, col: 2, req: ["pottery"], gives: "plantations for bananas (soon)" },
-      writing:          { name: "Writing 📜",          cost: 25, col: 2, req: ["pottery"], gives: "unlocks the Library 📚" },
-      trapping:         { name: "Trapping 🪤",         cost: 25, col: 2, req: ["animal_husbandry"], gives: "camps for furs (soon)" },
-      the_wheel:        { name: "The Wheel ☸️",        cost: 25, col: 2, req: ["animal_husbandry"], gives: "roads (soon)" },
-      masonry:          { name: "Masonry 🧱",          cost: 25, col: 2, req: ["mining"], gives: "unlocks the Array of Ginglewhopperian Gods 🗽" },
-      bronze_working:   { name: "Bronze Working 🛡️",   cost: 25, col: 2, req: ["mining"], gives: "Spearmen (soon)" },
-      optics:           { name: "Optics 🔭",           cost: 40, col: 3, req: ["sailing"], gives: "ships that see far (soon)" },
-      philosophy:       { name: "Philosophy 🤔",       cost: 40, col: 3, req: ["writing"], gives: "leads to Theology" },
-      horseback_riding: { name: "Horseback Riding 🐎", cost: 40, col: 3, req: ["the_wheel"], gives: "Knights → the Gingleraider (soon!)" },
-      mathematics:      { name: "Mathematics ➗",      cost: 40, col: 3, req: ["the_wheel", "archery"], gives: "Catapults (soon)" },
-      construction:     { name: "Construction 🏗️",     cost: 40, col: 3, req: ["masonry"], gives: "Colosseum (soon)" },
-      iron_working:     { name: "Iron Working ⚔️",     cost: 40, col: 3, req: ["bronze_working"], gives: "unlocks Swordsmen (Le Diggers: the Un Digatron!)" },
-      theology:         { name: "Theology ⛪",         cost: 60, col: 4, req: ["philosophy", "calendar"], gives: "unlocks the Shrine ⛩️" },
-      currency:         { name: "Currency 💰",         cost: 60, col: 4, req: ["mathematics"], gives: "unlocks the Market 🛒" },
-      engineering:      { name: "Engineering ⚙️",      cost: 60, col: 4, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
-      metal_casting:    { name: "Metal Casting 🔥",    cost: 60, col: 4, req: ["iron_working"], gives: "unlocks the Forge 🔥" },
-      civil_service:    { name: "Civil Service 📋",    cost: 90, col: 5, req: ["philosophy", "currency"], gives: "Farms give +1 food" },
-      education:        { name: "Education 🎓",        cost: 90, col: 5, req: ["theology"], gives: "unlocks the University" },
-      chivalry:         { name: "Chivalry 🏇",         cost: 90, col: 5, req: ["horseback_riding", "currency"], gives: "unlocks the Castle 🏰 and Knights (Ginglewhoppers: the Gingleraider!)" },
-      machinery:        { name: "Machinery ⛓️",        cost: 90, col: 5, req: ["engineering"], gives: "Camps +1 production, unlocks Crossbowmen (Eheu: the Eheu Missionary!)" },
-      compass:          { name: "Compass 🧭",          cost: 90, col: 5, req: ["optics"], gives: "Harbors (soon)" },
-      steel:            { name: "Steel 🗡️",            cost: 120, col: 6, req: ["metal_casting"], gives: "leads to Gunpowder" },
-      physics:          { name: "Physics 🍎",          cost: 120, col: 6, req: ["metal_casting", "machinery"], gives: "Trebuchets (soon)" },
-      gunpowder:        { name: "Gunpowder 💥",        cost: 150, col: 6, req: ["steel"], gives: "unlocks Musketmen (Boland: the Bo-bo Monk!)" },
-      replaceable_parts: { name: "Replaceable Parts 🏭", cost: 220, col: 7, req: ["gunpowder", "physics"], gives: "unlocks Infantry (Humanity: the TOMA!)" },
-      flight:           { name: "Flight ✈️",           cost: 320, col: 8, req: ["replaceable_parts"], gives: "unlocks Bombers (Pigeonians: the Birdie Bomber!)" },
+      // --- ANCIENT ERA ---
+      agriculture:      { name: "Agriculture 🌱",      cost: 8,   col: 0, req: [], gives: "Farms to feed your cities" },
+      pottery:          { name: "Pottery 🏺",          cost: 20,  col: 1, req: ["agriculture"], gives: "leads to Writing, Sailing & Calendar" },
+      animal_husbandry: { name: "Animal Husbandry 🐄", cost: 20,  col: 1, req: ["agriculture"], gives: "Pastures for cattle & horses" },
+      archery:          { name: "Archery 🏹",          cost: 20,  col: 1, req: ["agriculture"], gives: "unlocks Archers (Boland: the Ninja Ranger!)" },
+      mining:           { name: "Mining ⛏️",           cost: 20,  col: 1, req: ["agriculture"], gives: "Mines, and the Woodhenge 🪵 wonder" },
+      sailing:          { name: "Sailing ⛵",          cost: 35,  col: 2, req: ["pottery"], gives: "boats to cross the seas" },
+      calendar:         { name: "Calendar 📅",         cost: 35,  col: 2, req: ["pottery"], gives: "Plantations & Stonehenge 🪨" },
+      writing:          { name: "Writing 📜",          cost: 35,  col: 2, req: ["pottery"], gives: "the Library 📚 & Great Library" },
+      trapping:         { name: "Trapping 🪤",         cost: 35,  col: 2, req: ["animal_husbandry"], gives: "Camps to catch furs" },
+      the_wheel:        { name: "The Wheel ☸️",        cost: 35,  col: 2, req: ["animal_husbandry"], gives: "Roads & the path to Chivalry" },
+      masonry:          { name: "Masonry 🧱",          cost: 35,  col: 2, req: ["mining"], gives: "the Array 🗽 & the Pyramids 🔺" },
+      bronze_working:   { name: "Bronze Working 🛡️",   cost: 35,  col: 2, req: ["mining"], gives: "the Colossus ⚓ & Iron Working" },
+      // --- CLASSICAL ERA ---
+      optics:           { name: "Optics 🔭",           cost: 55,  col: 3, req: ["sailing"], gives: "ships that sail the ocean" },
+      mathematics:      { name: "Mathematics ➗",      cost: 55,  col: 3, req: ["the_wheel", "archery"], gives: "the Hanging Gardens 🌺" },
+      horseback_riding: { name: "Horseback Riding 🐎", cost: 55,  col: 3, req: ["the_wheel", "trapping"], gives: "Horsemen gallop forth" },
+      construction:     { name: "Construction 🏗️",     cost: 60,  col: 3, req: ["masonry", "calendar"], gives: "unlocks the Colosseum 🏟️" },
+      iron_working:     { name: "Iron Working ⚔️",     cost: 75,  col: 4, req: ["bronze_working"], gives: "Swordsmen (Le Diggers: the Un Digatron!)" },
+      philosophy:       { name: "Philosophy 🤔",       cost: 75,  col: 4, req: ["writing", "calendar"], gives: "the Oracle 🔮, leads to Theology" },
+      currency:         { name: "Currency 💰",         cost: 75,  col: 4, req: ["mathematics"], gives: "unlocks the Market 🛒" },
+      // --- MEDIEVAL ERA ---
+      theology:         { name: "Theology ⛪",         cost: 100, col: 5, req: ["philosophy"], gives: "unlocks the Shrine ⛩️" },
+      civil_service:    { name: "Civil Service 📋",    cost: 110, col: 5, req: ["philosophy", "trapping"], gives: "Farms give +1 food" },
+      engineering:      { name: "Engineering ⚙️",      cost: 110, col: 5, req: ["mathematics", "construction"], gives: "unlocks the Workshop 🔨" },
+      metal_casting:    { name: "Metal Casting 🔥",    cost: 110, col: 5, req: ["iron_working"], gives: "unlocks the Forge 🔥" },
+      compass:          { name: "Compass 🧭",          cost: 110, col: 5, req: ["optics"], gives: "far-seeing ships & Harbors" },
+      education:        { name: "Education 🎓",        cost: 150, col: 6, req: ["theology"], gives: "unlocks the University 🎓" },
+      chivalry:         { name: "Chivalry 🏇",         cost: 150, col: 6, req: ["horseback_riding", "civil_service"], gives: "Knights (Ginglewhoppers: Gingleraider!) & Castle 🏰" },
+      guilds:           { name: "Guilds 🏦",           cost: 150, col: 6, req: ["currency", "civil_service"], gives: "trade routes boom" },
+      machinery:        { name: "Machinery ⛓️",        cost: 150, col: 6, req: ["engineering"], gives: "Crossbowmen (Eheu: Missionary!), Camps +1⚒️" },
+      physics:          { name: "Physics 🍎",          cost: 150, col: 6, req: ["metal_casting", "compass"], gives: "Trebuchets lob boulders" },
+      steel:            { name: "Steel 🗡️",            cost: 160, col: 6, req: ["metal_casting"], gives: "sharper blades, leads to Gunpowder" },
+      // --- RENAISSANCE ERA ---
+      astronomy:        { name: "Astronomy 🔭",        cost: 200, col: 7, req: ["compass", "education"], gives: "map the stars" },
+      acoustics:        { name: "Acoustics 🎵",        cost: 200, col: 7, req: ["education"], gives: "Opera Houses sing" },
+      banking:          { name: "Banking 🏛️",          cost: 210, col: 7, req: ["guilds", "education"], gives: "Banks pile up gold" },
+      gunpowder:        { name: "Gunpowder 💥",        cost: 220, col: 7, req: ["steel", "physics"], gives: "Musketmen (Boland: the Bo-bo Monk!)" },
+      printing_press:   { name: "Printing Press 🖨️",   cost: 260, col: 8, req: ["machinery", "physics"], gives: "spread ideas far & wide" },
+      navigation:       { name: "Navigation 🧭",       cost: 260, col: 8, req: ["astronomy"], gives: "Frigates rule the waves" },
+      architecture:     { name: "Architecture 🏛️",     cost: 260, col: 8, req: ["acoustics"], gives: "grand buildings rise" },
+      metallurgy:       { name: "Metallurgy ⚒️",       cost: 270, col: 8, req: ["gunpowder"], gives: "stronger cannons" },
+      chemistry:        { name: "Chemistry 🧪",        cost: 270, col: 8, req: ["gunpowder"], gives: "powerful reactions" },
+      economics:        { name: "Economics 📈",        cost: 320, col: 9, req: ["banking", "printing_press"], gives: "the wealth of nations" },
+      archaeology:      { name: "Archaeology 🏺",       cost: 320, col: 9, req: ["acoustics"], gives: "dig up ancient history" },
+      // --- INDUSTRIAL ERA ---
+      scientific_theory:{ name: "Scientific Theory 🔬", cost: 400, col: 10, req: ["economics"], gives: "science soars with Public Schools" },
+      steam_power:      { name: "Steam Power 🚂",      cost: 400, col: 10, req: ["economics", "physics"], gives: "Ironclads & factories" },
+      rifling:          { name: "Rifling 🔫",          cost: 420, col: 10, req: ["metallurgy"], gives: "Riflemen take aim" },
+      military_science: { name: "Military Science 🎖️", cost: 420, col: 10, req: ["chemistry", "economics"], gives: "Cannons & great generals" },
+      biology:          { name: "Biology 🧬",          cost: 480, col: 11, req: ["scientific_theory", "archaeology"], gives: "medicine & mighty growth" },
+      industrialization:{ name: "Industrialization 🏭", cost: 500, col: 11, req: ["economics", "metallurgy"], gives: "Factories thunder to life" },
+      dynamite:         { name: "Dynamite 🧨",         cost: 500, col: 11, req: ["rifling", "military_science"], gives: "big booms for mines & war" },
+      steam_railroad:   { name: "Railroad 🛤️",         cost: 520, col: 11, req: ["steam_power", "dynamite"], gives: "rails speed everything up" },
+      replaceable_parts:{ name: "Replaceable Parts 🏭", cost: 520, col: 11, req: ["steam_power", "military_science"], gives: "Infantry (Humanity: the TOMA!)" },
+      electricity:      { name: "Electricity ⚡",      cost: 540, col: 11, req: ["biology", "steam_power"], gives: "lights up the world" },
+      // --- MODERN ERA ---
+      refrigeration:    { name: "Refrigeration 🧊",    cost: 650, col: 12, req: ["electricity"], gives: "fresh food everywhere" },
+      radio:            { name: "Radio 📻",            cost: 650, col: 12, req: ["electricity", "steam_railroad"], gives: "broadcast to the world" },
+      combustion:       { name: "Combustion 🚗",       cost: 680, col: 12, req: ["replaceable_parts", "steam_railroad"], gives: "Tanks & cars roar" },
+      electronics:      { name: "Electronics 💡",      cost: 680, col: 12, req: ["radio"], gives: "gadgets, radar & computers" },
+      flight:           { name: "Flight ✈️",           cost: 750, col: 13, req: ["radio", "replaceable_parts"], gives: "Bombers (Pigeonians: the Birdie Bomber!)" },
+      ballistics:       { name: "Ballistics 💣",       cost: 760, col: 13, req: ["rifling", "electronics"], gives: "Machine Guns rattle" },
+      plastics:         { name: "Plastics 🧴",         cost: 780, col: 13, req: ["electronics"], gives: "cheap, tough materials" },
+      radar:            { name: "Radar 📡",            cost: 800, col: 13, req: ["flight", "electronics"], gives: "spot planes from afar" },
+      computers:        { name: "Computers 💻",        cost: 850, col: 13, req: ["electronics", "radar"], gives: "machines that think" },
+      nuclear_fission:  { name: "Nuclear Fission ☢️",  cost: 900, col: 13, req: ["ballistics", "computers"], gives: "split the atom" },
+      // --- FUTURE ERA ---
+      rocketry:         { name: "Rocketry 🚀",         cost: 1000, col: 14, req: ["flight", "radar"], gives: "rockets blast off" },
+      ecology:          { name: "Ecology 🌍",          cost: 1000, col: 14, req: ["plastics", "biology"], gives: "care for the planet" },
+      robotics:         { name: "Robotics 🤖",         cost: 1050, col: 14, req: ["computers", "combustion"], gives: "robot workers" },
+      satellites:       { name: "Satellites 🛰️",       cost: 1150, col: 15, req: ["rocketry", "computers"], gives: "eyes high in orbit" },
+      lasers:           { name: "Lasers 🔦",           cost: 1150, col: 15, req: ["nuclear_fission", "radar"], gives: "beams of pure light" },
+      nuclear_fusion:   { name: "Nuclear Fusion ⚛️",   cost: 1200, col: 16, req: ["lasers", "nuclear_fission"], gives: "limitless power" },
+      globalization:    { name: "Globalization 🌐",    cost: 1250, col: 16, req: ["satellites", "computers"], gives: "the whole world connects" },
+      particle_physics: { name: "Particle Physics 🔬", cost: 1350, col: 16, req: ["lasers", "nuclear_fusion"], gives: "the tiniest secrets of all" },
+      stealth:          { name: "Stealth 🥷",          cost: 1450, col: 16, req: ["robotics", "radar"], gives: "invisible aircraft" },
+      nanotechnology:   { name: "Nanotechnology 🧫",   cost: 1450, col: 16, req: ["particle_physics", "robotics"], gives: "tiny machines build anything" },
+      future_tech:      { name: "Future Tech 🌟",      cost: 1600, col: 17, req: ["nanotechnology", "globalization"], gives: "the future is NOW!" },
     };
-    const TECH_ERAS = ["Ancient", "Ancient", "Ancient", "Classical", "Classical", "Medieval", "Medieval", "Industrial", "Modern"];
-    const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Industrial", "Modern"];
+    // which era each COLUMN belongs to (index into ERA_NAMES)
+    const ERA_NAMES = ["Ancient", "Classical", "Medieval", "Renaissance", "Industrial", "Modern", "Future"];
+    const ERA_OF_COL = [0,0,0, 1,1, 2,2, 3,3,3, 4,4, 5,5, 6,6,6,6];
+    const TECH_ERAS = ERA_OF_COL.map(i => ERA_NAMES[i]); // era label for each column
     let currentEra = 0;
     function eraOf() { // your era = the newest tech you know
       let best = 0;
       for (const k of researched) {
         const t = TECHS[k];
         if (!t) continue;
-        const e = t.col <= 2 ? 0 : t.col <= 4 ? 1 : t.col <= 6 ? 2 : t.col <= 7 ? 3 : 4;
+        const e = ERA_OF_COL[t.col];
         if (e > best) best = e;
       }
       return best;
@@ -2278,7 +2329,8 @@
         colDiv.className = "techCol";
         const era = document.createElement("div");
         era.className = "techEra";
-        era.textContent = TECH_ERAS[col];
+        // show the era name only on the first column of each era band
+        era.textContent = (col === 0 || ERA_OF_COL[col] !== ERA_OF_COL[col - 1]) ? TECH_ERAS[col] : "·";
         colDiv.appendChild(era);
         for (const [key, t] of Object.entries(TECHS)) {
           if (t.col !== col) continue;
